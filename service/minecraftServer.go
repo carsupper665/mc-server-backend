@@ -66,6 +66,14 @@ func (s *ServerService) Backup(sid, workDir string) error {
 	return s.mgr.BackUp(sid, workDir)
 }
 
+func (s *ServerService) RollBackSave(sid, file, workDir string) error {
+	return s.mgr.ServerSaveRollBack(sid, file, workDir)
+}
+
+func (s *ServerService) ListBackups(sid, workDir string) ([]string, error) {
+	return s.mgr.ServerSaveList(sid, workDir)
+}
+
 func CreateServer(ownerID string, serverType string, serverVer string, fabricLoader string, fabricInstaller string) (string, error) {
 	var idPerFix, fURL, vURL string
 	var err error
