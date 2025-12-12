@@ -260,7 +260,7 @@ func (sm *ServerManager) ServerSaveRollBack(sid, fileName, workDir string) error
 	srv, exists := sm.servers[sid]
 	sm.mu.RUnlock()
 
-	if exists && srv.Status() != "running" {
+	if exists && srv.Status() == "running" {
 		return ErrServerRunning
 	}
 
