@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	// "embed"
 	"fmt"
 	"go-backend/common"
@@ -41,6 +42,15 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	} else {
 		common.SysLog(common.ColorBrightCyan + "Debug mode is enabled, running in Debug Mode" + common.ColorReset)
+	}
+	updateErr := common.CheckForUpdates()
+	if updateErr != nil {
+		if !errors.Is(updateErr, common.ErrAlreadyLatest) && !errors.Is(updateErr, common.ErrUpdateDisabled) {
+			common.SysError("Update check failed: " + updateErr.Error())
+		}
+	} else {
+		common.SysLog("Application updated successfully, please restart the application.")
+		return
 	}
 	// init DB (use SQLite)
 	err = model.InitDB()
