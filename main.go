@@ -36,7 +36,7 @@ func main() {
 	common.LoadEnv()
 	// Setup logger
 	common.SetupLogger()
-	common.SysLog("Backend Server Engine | " + common.Version + "-" + common.Build + " started")
+	common.SysLog("Backend Server Engine | " + common.Version + "-" + common.ColorBuild + " started")
 	if os.Getenv("DEBUG") != "true" { // gin 預設為 debug 所以要記得關
 		common.SysLog(common.ColorGreen + "Running in Release Mode" + common.ColorReset)
 		gin.SetMode(gin.ReleaseMode)
