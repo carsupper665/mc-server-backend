@@ -125,6 +125,83 @@ type ServerController struct {
 	svc *service.ServerService
 }
 
+type SaveRollBackRequest struct {
+	FileName string `json:"file_name" binding:"required"`
+	ServerID string `json:"server_id" binding:"required"`
+}
+
+func (sc *ServerController) ListServerBackup(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uintID, err := getPayloadAndId(c)
+
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	serverInfo, err := model.GetServerByID(uintID, serverID)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Server start Failed."})
+		return
+	}
+
+	backups, err := sc.svc.ListBackups(serverInfo.ServerID, serverInfo.SystemPath)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "ListBackups error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to list backups"})
+		return
+	}
+
+	c.JSON(200, gin.H{"backups": backups})
+}
+
+func (sc *ServerController) SaveRollBack(c *gin.Context) {
+	var req SaveRollBackRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.LogDebug(c.Request.Context(), "request binding error: "+err.Error())
+		c.JSON(400, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	_, _, uintID, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if err := model.IsOwner(uintID, req.ServerID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+	}
+
+	serverInfo, err := model.GetServerByID(uintID, req.ServerID)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Server start Failed."})
+		return
+	}
+
+	err = sc.svc.RollBackSave(req.ServerID, req.FileName, serverInfo.SystemPath)
+
+	if err != nil {
+		if !errors.Is(err, service.ErrServerRunning) {
+			common.LogError(c.Request.Context(), "RollBackSave error: "+err.Error())
+			c.JSON(500, gin.H{"error": "Failed to save server to user"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "Cannot rollback while server is running"})
+		return
+	}
+
+	c.Status(200)
+}
+
 func NewServerController(svc *service.ServerService) *ServerController {
 	return &ServerController{svc: svc}
 }

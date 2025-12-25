@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"go-backend/common"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -231,6 +233,56 @@ func NewServerManager(ports []int) *ServerManager {
 	}
 	go sm.cleanupExpired()
 	return sm
+}
+
+func (sm *ServerManager) ServerSaveList(sid, workDir string) ([]string, error) {
+	// just read dir, lock not needed
+	list := make([]string, 0)
+
+	// os read dir
+	backupDir := filepath.Join(workDir, "backup")
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return list, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			list = append(list, entry.Name())
+		}
+	}
+
+	return list, nil
+}
+
+func (sm *ServerManager) ServerSaveRollBack(sid, fileName, workDir string) error {
+	sm.mu.RLock()
+	srv, exists := sm.servers[sid]
+	sm.mu.RUnlock()
+
+	if exists && srv.Status() == "running" {
+		return ErrServerRunning
+	}
+
+	src := filepath.Join(workDir, "backup", fileName)
+	if _, err := os.ReadDir(src); err != nil {
+		return os.ErrNotExist
+	}
+
+	dst := filepath.Join(workDir, "world")
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if errRemove := os.RemoveAll(dst); errRemove != nil {
+		return errRemove
+	}
+
+	if errCopy := common.Copy(src, dst); errCopy != nil {
+		return errCopy
+	}
+
+	return nil
 }
 
 func (sm *ServerManager) countByOwner(oid string) int {

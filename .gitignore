@@ -31,6 +31,6 @@ logs/*
 minecraft_servers/*
 servers/*
 # Editor/IDE
- .idea/*
+.idea/*
 # .vscode/
 build/
