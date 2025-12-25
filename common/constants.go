@@ -12,7 +12,7 @@ package common
 
 const (
 	Version                 = "0.1.0"
-	Build                   = "bata-1.1.16c8"
+	Build                   = "bata-1.2"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
