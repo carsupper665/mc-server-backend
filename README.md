@@ -20,6 +20,21 @@ A lightweight, self-hosted game server management platform written in Go, design
     -   **Single Binary Deployment**: Frontend (Vue 3) is embedded into the Go binary.
     -   **Lightweight**: Uses SQLite for data storage, no heavy database required.
     -   **Self-Contained**: Environment-based configuration.
+-   **Terminal Console UI/UX Enhancements**:
+    -   **Visual & Atmosphere**:
+        -   **CRT Scanline Effect**: Subtle horizontal scanline overlay for retro terminal aesthetics.
+        -   **Virtual Cursor**: Input fields feature a blinking block caret that follows text, instead of the standard vertical line.
+        -   **Background Glow**: Dark green background glow effect for enhanced ambiance.
+    -   **Advanced Operations**:
+        -   **Tab Auto-completion**: Press `Tab` after typing `/` to trigger suggestions, automatically completing the first suggested command.
+        -   **Click-to-Focus**: Clicking anywhere in the terminal automatically focuses the input field.
+        -   **Clear Console**: Support for `/clear` command or click the trash icon in the top-right corner to locally clear displayed content.
+    -   **Smart Scroll Mechanism (Sticky Scroll)**:
+        -   **New Activity Indicator**: When scrolling up to view history, new messages won't abruptly jump you back to the bottom.
+        -   **Quick Return**: A "New Activity" button appears when scrolled up, allowing quick return to the bottom.
+    -   **System Prompt Optimization**:
+        -   Updated prompt style to `admin@node-01:~$`.
+        -   Enhanced visual feedback for command input with green underline highlighting.
 
 ## Getting Started
 
