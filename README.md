@@ -1,126 +1,192 @@
-# Go Backend
+# Server Controller Backend
 
-A lightweight backend service written in Go, created just for fun and experimentation.
+A lightweight, self-hosted game server management platform written in Go, designed for private communities and friends.
 
-## Overview
+## Features
 
-A simple backend application with the following features(P.S. All features are still under development and not yet fully functional.):
-- Login authentication
-- Identity management
-- management
-- Game server control
-- Cloud storage
-- I'll think about it later. ;D
+-   **Game Server Management**:
+    -   Create, start, stop, and configure **Minecraft** (Vanilla/Fabric) servers.
+    -   Real-time console access with command execution.
+    -   Server resource monitoring (CPU/RAM).
+    -   Configurable `server.properties` editor.
+    -   Backup management (World data).
+    -   *Experimental support for Among Us servers.*
+-   **User System**:
+    -   Private access control (No public registration).
+    -   Role-based permissions (Root/Admin/User).
+    -   Secure authentication via JWT & Cookies.
+    -   Multi-Factor Authentication (Email Verification) for new devices.
+-   **Architecture**:
+    -   **Single Binary Deployment**: Frontend (Vue 3) is embedded into the Go binary.
+    -   **Lightweight**: Uses SQLite for data storage, no heavy database required.
+    -   **Self-Contained**: Environment-based configuration.
 
 ## Getting Started
 
-1. Clone the repository  
-   ```bash
-   git clone https://github.com/carsupper665/web-server-backend.git
-   cd web-server-backend
-   ```
+### Prerequisites
 
-2. Create a `.env` file in the project root (see below for details).
+-   Go 1.24+
+-   Node.js 18+ (for building frontend)
+-   Java (JDK 17/21 recommended) installed and available in system PATH (for running Minecraft servers).
 
-3. Install dependencies and run:  
+### Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/carsupper665/mc-server-backend.git
+    cd mc-server-backend
+    ```
+
+2.  **Build Frontend & Backend**
+    This command will build the Vue frontend and embed it into the Go binary.
+    ```bash
+    # Windows
+    cd frontend && npm install && npm run build
+    cd ..
+    go build -o server.exe main.go
+
+    # Linux/Mac
+    cd frontend && npm install && npm run build
+    cd ..
+    go build -o server main.go
+    ```
+
+3.  **Configuration**
+    Create a `.env` file in the root directory (see configuration below).
+
+4.  **Run**
+    ```bash
+    # Windows
+    ./server.exe
+    
+    # Linux/Mac
+    ./server
+    ```
+    Access the dashboard at `http://localhost:8080`.
+
+    **注意**：前端静态文件已经嵌入到 Go 二进制文件中，运行服务器后会自动提供前端服务。无需单独启动前端服务器。
+
+### 开发模式（前端热重载）
+
+如果你正在开发前端代码，可以使用开发模式以获得热重载功能：
+
+1. **启动后端服务器**（在一个终端窗口）
    ```bash
-   go mod download
    go run main.go
+   # 或
+   ./server.exe
    ```
 
-4. The server will start on the port you specify in your `.env` (default `8080`).
+2. **启动前端开发服务器**（在另一个终端窗口）
+   ```bash
+   cd frontend
+   npm install  # 如果还没安装依赖
+   npm run dev
+   ```
+
+3. **访问前端**
+   - 前端开发服务器通常运行在 `http://localhost:5173`（Vite 默认端口）
+   - 前端会自动将 API 请求代理到 `http://localhost:8080`（后端）
+   - 修改前端代码后会自动刷新，无需重新构建
+
+**开发模式的优势**：
+- ✅ 热重载：修改代码立即看到效果
+- ✅ 更快的编译速度
+- ✅ 更好的错误提示
+- ✅ 支持 Vue DevTools 调试
+
+### 单独测试前端静态文件（开发调试用）
+
+如果你想单独测试编译后的前端静态文件（不通过 Go 后端），可以使用以下方法：
+
+1. **使用 Vite Preview（推荐）**
+   ```bash
+   cd frontend
+   npm run preview
+   ```
+   这会在 `http://localhost:4173` 启动一个预览服务器。
+
+2. **使用 Python HTTP 服务器**
+   ```bash
+   # Python 3
+   cd frontend/dist
+   python -m http.server 8080
+   
+   # Python 2
+   python -m SimpleHTTPServer 8080
+   ```
+
+3. **使用 Node.js serve**
+   ```bash
+   npx serve frontend/dist -p 8080
+   ```
+
+**注意**：单独运行静态文件时，API 请求会失败（因为后端未运行）。仅用于测试前端界面，完整功能需要运行 Go 服务器。
 
 ---
 
 ## `.env` Configuration
 
-Create a file named `.env` in the project root with the following variables:
+Create a file named `.env` in the project root:
 
 ```dotenv
-# URL of your frontend application (e.g. http://localhost:3000)
-FRONTEND_BASE_URL=
-
-# Port for the backend to listen on
+# Server Configuration
 PORT=8080
-
-# Enable debug logging (true or false)
 DEBUG=false
 
-# Session and cryptography secrets
-SESSION_SECRET=your-secret-key
-CRYPTO_SECRET=your-crypto-secret
+# Security (Change these!)
+SESSION_SECRET=change-this-to-a-random-string
+CRYPTO_SECRET=change-this-to-another-random-string
 
-# Paths and caching
-SQLITE_PATH=path/to/db.sqlite
-MEMORY_CACHE_ENABLED=false
-
-# Timing settings (in seconds)
-SYNC_FREQUENCY=60
-BATCH_UPDATE_INTERVAL=300
-RELAY_TIMEOUT=30
-
-# Database connection pool settings:
-#   SQL_MAX_IDLE_CONNS: maximum number of idle connections retained in the pool (default: 100)
+# Database
+SQLITE_PATH=./data/db.sqlite
 SQL_MAX_IDLE_CONNS=100
-
-#   SQL_MAX_OPEN_CONNS: maximum number of open connections to the database at once (default: 1000)
 SQL_MAX_OPEN_CONNS=1000
-
-#   SQL_MAX_LIFETIME: maximum time in seconds a connection may be reused before being closed (default: 60)
 SQL_MAX_LIFETIME=60
 
-# Automatically create a root/admin user on startup (true or false)
+# Initial Admin Setup
 CREATE_ROOT_USER=true
+ROOT_USER_NAME=admin
+ROOT_USER_EMAIL=admin@example.com
+ROOT_USER_PASSWORD=securepassword
+
+# Game Server Settings
+MINECRAFT_SERVER_PATH=./minecraft_servers
+LATEST_FABRIC_INSTALLER_VERSION=1.1.0
+
+# Email (Optional, for MFA verification code)
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+SMTP_ACCOUNT=noreply@example.com
+SMTP_TOKEN=your-smtp-password
+SMTP_FROM=noreply@example.com
+SMTP_SSL_ENABLED=false
+
+# System Tuning
+GLOBAL_API_RATE_LIMIT=60
+GLOBAL_API_RATE_LIMIT_DURATION=60
+UA_FILTER=true
 ```
 
-### Variable Descriptions
+## Project Structure
 
-- **FRONTEND_BASE_URL**  
-  The base URL where your frontend application is hosted (e.g. `http://localhost:3000`). This is used to configure CORS and generate links.
+```
+├── common/         # Shared utilities, constants, config loader
+├── controller/     # HTTP Request handlers
+├── frontend/       # Vue 3 + Vite Frontend source
+├── middleware/     # Gin middlewares (Auth, CORS, Logging)
+├── model/          # Database models (SQLite/GORM)
+├── router/         # API Routes & Static file serving
+├── service/        # Business logic (Server process management)
+└── main.go         # Entry point
+```
 
-- **PORT**  
-  The TCP port on which the Go HTTP server listens (default: `3000`).
+## Tech Stack
 
-- **DEBUG**  
-  When set to `true`, enables verbose logging and debug endpoints. Use `false` in production.
+-   **Backend**: Go (Gin Framework), GORM (SQLite), Gorilla WebSocket
+-   **Frontend**: Vue 3, TypeScript, Vite, Tailwind CSS, Pinia
+-   **Infrastructure**: Embed (Go 1.16+), Viper (Config)
 
-- **SESSION_SECRET**  
-  A secret key used to sign and validate session cookies. Keep this secure and random.
+## License
 
-- **CRYPTO_SECRET**  
-  A secret used for encrypting and decrypting sensitive data.
-
-- **SQLITE_PATH**  
-  The file path to the SQLite database. Example: `./data/db.sqlite`.
-
-- **MEMORY_CACHE_ENABLED**  
-  Enable in-memory caching (`true` or `false`).
-
-- **SYNC_FREQUENCY**  
-  How often (in seconds) background sync tasks should run.
-
-- **BATCH_UPDATE_INTERVAL**  
-  Interval (in seconds) between batch update operations.
-
-- **RELAY_TIMEOUT**  
-  Timeout (in seconds) for relay operations before giving up.
-
-- **SQL_MAX_IDLE_CONNS**  
-  The maximum number of idle (unused) connections that the database connection pool will keep open.  
-  Default: `100`.
-
-- **SQL_MAX_OPEN_CONNS**  
-  The maximum total number of open connections to your database.  
-  Default: `1000`.
-
-- **SQL_MAX_LIFETIME**  
-  The maximum amount of time (in seconds) a connection may be reused before being closed and replaced.  
-  Default: `60`.
-
-- **CREATE_ROOT_USER**  
-  If `true`, the application will automatically create a default root (admin) user on startup when none exists.  
-  Set to `false` to disable automatic user creation.
-
----
-## References
-- This project is inspired by [QuantumNous/new-api](https://github.com/QuantumNous/new-api)
+This project is created for personal use and experimentation.
