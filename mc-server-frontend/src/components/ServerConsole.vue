@@ -35,12 +35,26 @@ const props = defineProps({
   },
 });
 
+const emit = defineEmits(['command-sent']);
+
 const message = useMessage();
 
 // 終端機相關狀態
 const terminalRef = ref(null);
-let term = null;
+const term = ref(null); // 使用 ref 確保可被父元件正確存取 (Vue 會自動 unwrap)
 let fitAddon = null;
+let isTerminalInitialized = false;
+
+// Resize handler (需要具名函數才能正確移除事件監聽器)
+const handleResize = () => {
+  if (fitAddon && isTerminalInitialized) {
+    try {
+      fitAddon.fit();
+    } catch (e) {
+      // 忽略 resize 時的錯誤
+    }
+  }
+};
 
 // 指令相關狀態
 const command = ref('');
@@ -49,6 +63,7 @@ const historyIndex = ref(-1);
 const showSuggestions = ref(false);
 const filteredCommands = ref([]);
 const selectedSuggestionIndex = ref(0);
+const suggestionsRef = ref(null); // 下拉選單容器引用
 
 const COMMAND_HISTORY_KEY = `mc_cmd_history_`;
 
@@ -66,9 +81,9 @@ const mcCommands = [
 
 // 初始化終端機
 const initTerminal = () => {
-  if (term) return; // 防止重複初始化
+  if (term.value) return; // 防止重複初始化
 
-  term = new Terminal({
+  term.value = new Terminal({
     theme: {
       background: '#0c0c0e',
       foreground: '#d4d4d4',
@@ -82,26 +97,27 @@ const initTerminal = () => {
   });
 
   fitAddon = new FitAddon();
-  term.loadAddon(fitAddon);
-  term.open(terminalRef.value);
+  term.value.loadAddon(fitAddon);
+  term.value.open(terminalRef.value);
   fitAddon.fit();
+  isTerminalInitialized = true; // 標記初始化完成
 
-  term.writeln('\x1b[1;32m[ SYSTEM ] Terminal initialized. Waiting for logs...\x1b[0m');
+  term.value.writeln('\x1b[1;32m[ SYSTEM ] Terminal initialized. Waiting for logs...\x1b[0m');
 };
 
 // 公開方法：寫入日誌
 const writeLog = (logData) => {
-  if (term && logData) {
-    term.clear();
-    term.write(logData);
+  if (term.value && logData) {
+    term.value.clear();
+    term.value.write(logData);
   }
 };
 
 // 公開方法：清除終端機
 const clearTerminal = () => {
-  if (term) {
-    term.clear();
-    term.writeln('\x1b[1;33m[ SYSTEM ] Terminal cleared.\x1b[0m');
+  if (term.value) {
+    term.value.clear();
+    term.value.writeln('\x1b[1;33m[ SYSTEM ] Terminal cleared.\x1b[0m');
   }
 };
 
@@ -144,21 +160,20 @@ const sendCommand = async () => {
     command.value = '';
 
     const highlightedCmd = highlightCommand(cmd);
-    term.writeln(`\x1b[1;36m❯\x1b[0m ${highlightedCmd}`);
+    term.value.writeln(`\x1b[1;36m❯\x1b[0m ${highlightedCmd}`);
 
     await api.post(`/mc-api/a/cmd/${props.serverId}`, { command: cmd });
 
-    // 觸發父元件刷新日誌? 
-    // 不需要，父元件有定時輪詢。如果需要立即反饋，父元件可以監聽按鈕點擊? 
-    // 為了保持簡單，我們這裡不做額外的 emit，依賴輪詢。
-    // 或許可以 emit('command-sent') 來讓父元件立即 fetchLogs?
-    // 但原代碼是在這裡 setTimeout fetchLogs。
-    // 由於 fetchLogs 在父元件，我們可以 emit 一個事件。
+    // 觸發父元件刷新日誌
     emit('command-sent');
     
   } catch (err) {
-    term.writeln(`\x1b[1;31m[ ERROR ] 指令發送失敗\x1b[0m`);
-    message.error('指令發送失敗');
+    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
+    term.value?.writeln(`\x1b[1;31m[ ERROR ] 指令發送失敗: ${errorMsg}\x1b[0m`);
+    if (err.response) {
+      term.value?.writeln(`\x1b[1;31m[ DEBUG ] Status: ${err.response.status}\x1b[0m`);
+    }
+    message.error(`指令發送失敗: ${errorMsg}`);
   }
 };
 
@@ -210,8 +225,19 @@ const handleTabComplete = () => {
     command.value = matches[0] + ' ';
     showSuggestions.value = false;
   } else if (matches.length > 1) {
-    term.writeln(`\x1b[1;33m[ TAB ] ${matches.join(', ')}\x1b[0m`);
+    term.value?.writeln(`\x1b[1;33m[ TAB ] ${matches.join(', ')}\x1b[0m`);
   }
+};
+
+// 滾動到選中的建議項目
+const scrollToSelectedItem = () => {
+  nextTick(() => {
+    if (!suggestionsRef.value) return;
+    const selectedItem = suggestionsRef.value.querySelector('.suggestion-item.active');
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 };
 
 const handleCommandKeydown = e => {
@@ -220,11 +246,13 @@ const handleCommandKeydown = e => {
       e.preventDefault();
       selectedSuggestionIndex.value =
         (selectedSuggestionIndex.value - 1 + filteredCommands.value.length) % filteredCommands.value.length;
+      scrollToSelectedItem();
       return;
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       selectedSuggestionIndex.value =
         (selectedSuggestionIndex.value + 1) % filteredCommands.value.length;
+      scrollToSelectedItem();
       return;
     } else if (e.key === 'Tab' || e.key === 'Enter') {
       e.preventDefault();
@@ -272,7 +300,7 @@ watch(
   () => props.macroStatus?.active,
   () => {
     nextTick(() => {
-      fitAddon?.fit();
+      handleResize();
     });
   }
 );
@@ -280,27 +308,35 @@ watch(
 onMounted(() => {
   initTerminal();
   loadCommandHistory();
-  window.addEventListener('resize', () => fitAddon?.fit());
+  window.addEventListener('resize', handleResize);
 });
 
 onBeforeUnmount(() => {
-  term?.dispose();
-  window.removeEventListener('resize', () => fitAddon?.fit());
+  // 先標記終端機已關閉，防止 resize 等事件在清理過程中觸發錯誤
+  isTerminalInitialized = false;
+  
+  // 移除事件監聽器
+  window.removeEventListener('resize', handleResize);
+  
+  // 安全地 dispose 終端機
+  if (term.value) {
+    try {
+      term.value.dispose();
+    } catch (e) {
+      // 忽略 dispose 時的錯誤 (addon 可能已被清理)
+      console.log('[Terminal] Cleanup completed');
+    }
+    term.value = null;
+  }
+  fitAddon = null;
 });
 
 // Expose term for MacroPanel and methods for parent
 defineExpose({
-  term, // Exposing the term variable directly might be null initially if setup logic delays? No, onMounted sets it.
-  // Actually, Vue 3 defineExpose with script setup exposes ref values.
-  // We need to return the term instance. However, term is a let variable, not a ref.
-  // We should make term a shallowRef or wrapper to expose it properly?
-  // Or just a method to get it?
-  getTerm: () => term,
+  term, // ref(Terminal)
   writeLog,
   clearTerminal
 });
-
-const emit = defineEmits(['command-sent']);
 </script>
 
 <template>
@@ -353,6 +389,7 @@ const emit = defineEmits(['command-sent']);
         <!-- 指令建議下拉選單 -->
         <div
           v-if="showSuggestions && filteredCommands.length > 0"
+          ref="suggestionsRef"
           class="suggestions-dropdown"
         >
           <div

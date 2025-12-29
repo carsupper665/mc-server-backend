@@ -14,9 +14,13 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  isServerRunning: {
+    type: Boolean,
+    default: false,
+  },
 });
 
-const emit = defineEmits(['recovery-started']);
+const emit = defineEmits(['recovery-started', 'request-stop', 'request-start', 'backup-started']);
 
 const message = useMessage();
 const activityLog = useActivityLogStore();
@@ -24,6 +28,11 @@ const activityLog = useActivityLogStore();
 // Backups state
 const backups = ref([]);
 const loading = ref(false);
+
+// Backup confirmation modal state (for when server is running)
+const showBackupConfirmModal = ref(false);
+const isBackingUp = ref(false);
+const backupProgress = ref(''); // 顯示備份流程狀態
 
 // Recover modal state
 const showRecoverModal = ref(false);
@@ -34,7 +43,8 @@ const isRecovering = ref(false);
 const fetchBackups = async () => {
   loading.value = true;
   try {
-    const res = await api.post(`/mc-api/a/ls-backup/${props.serverId}`);
+    // 傳送空物件以確保 Content-Type header 正確
+    const res = await api.post(`/mc-api/a/ls-backup/${props.serverId}`, {});
     // api interceptor returns response.data directly
     backups.value = res && res.backups ? res.backups.map(b => ({ name: b })) : [];
   } catch (err) {
@@ -45,13 +55,85 @@ const fetchBackups = async () => {
 };
 
 const handleBackup = async () => {
+  // 如果伺服器正在運行，顯示確認對話框
+  if (props.isServerRunning) {
+    showBackupConfirmModal.value = true;
+    return;
+  }
+  
+  // 伺服器已停止，直接執行備份
+  await executeBackup();
+};
+
+// 執行備份（伺服器必須已停止）
+const executeBackup = async () => {
   try {
-    await api.post(`/mc-api/a/backup/${props.serverId}`);
-    message.success('備份任務已啟動');
+    await api.post(`/mc-api/a/backup/${props.serverId}`, {});
+    message.success('備份完成！');
     activityLog.logBackup(props.serverId, props.serverName);
     fetchBackups();
+    return true;
   } catch (err) {
-    message.error('備份失敗');
+    const errorMsg = getSanitizedErrorMessage(err);
+    if (errorMsg.toLowerCase().includes('running') || err.response?.status === 500) {
+      message.error('備份失敗：伺服器運行中無法備份');
+    } else {
+      message.error(`備份失敗: ${errorMsg}`);
+    }
+    activityLog.logError('備份失敗', props.serverId, errorMsg);
+    return false;
+  }
+};
+
+// 休眠函數
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// 執行完整備份流程：停止 → 備份 → 重啟
+const executeFullBackupFlow = async () => {
+  isBackingUp.value = true;
+  showBackupConfirmModal.value = false;
+  
+  try {
+    // 步驟 1: 停止伺服器
+    backupProgress.value = '正在停止伺服器...';
+    message.info('正在停止伺服器以進行備份...');
+    emit('request-stop');
+    
+    // 等待伺服器停止 (輪詢檢查)
+    let attempts = 0;
+    const maxAttempts = 30; // 最多等待 30 秒
+    while (props.isServerRunning && attempts < maxAttempts) {
+      await sleep(1000);
+      attempts++;
+    }
+    
+    if (props.isServerRunning) {
+      message.error('伺服器停止超時，請手動停止後再試');
+      return;
+    }
+    
+    // 步驟 2: 執行備份
+    backupProgress.value = '正在建立備份...';
+    const backupSuccess = await executeBackup();
+    
+    if (!backupSuccess) {
+      message.error('備份失敗，伺服器將保持停止狀態');
+      return;
+    }
+    
+    // 步驟 3: 重啟伺服器
+    backupProgress.value = '正在重新啟動伺服器...';
+    message.info('備份完成，正在重新啟動伺服器...');
+    emit('request-start');
+    
+    message.success('備份流程完成！伺服器正在重新啟動。');
+    emit('backup-started');
+    
+  } catch (err) {
+    message.error('備份流程發生錯誤: ' + err.message);
+  } finally {
+    isBackingUp.value = false;
+    backupProgress.value = '';
   }
 };
 
@@ -97,13 +179,25 @@ defineExpose({ fetchBackups });
   <div class="server-backups-container">
     <n-card title="BACKUPS" class="backup-card">
       <template #header-extra>
-        <n-button size="tiny" tertiary @click="handleBackup">
+        <n-button 
+          size="tiny" 
+          tertiary 
+          :disabled="isBackingUp"
+          :loading="isBackingUp"
+          title="建立新備份"
+          @click="handleBackup"
+        >
           <template #icon
             ><n-icon><SaveOutlined /></n-icon
           ></template>
           NEW
         </n-button>
       </template>
+
+      <!-- 備份進度顯示 -->
+      <div v-if="isBackingUp" class="backup-progress">
+        <n-text type="warning">{{ backupProgress }}</n-text>
+      </div>
 
       <div class="backup-list">
         <div v-if="loading" class="empty-backups">載入中...</div>
@@ -149,6 +243,42 @@ defineExpose({ fetchBackups });
             @click="confirmRecover"
           >
             確認還原
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- 備份確認 Modal (伺服器運行中) -->
+    <n-modal
+      v-model:show="showBackupConfirmModal"
+      preset="card"
+      title="⚠️ 伺服器運行中"
+      class="backup-confirm-modal"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <div class="backup-confirm-content">
+        <n-text>
+          伺服器目前正在運行中。備份需要先停止伺服器。
+        </n-text>
+        <n-text depth="3" style="display: block; margin-top: 8px">
+          系統將自動執行以下流程：
+        </n-text>
+        <ol class="backup-steps">
+          <li>停止伺服器</li>
+          <li>建立備份</li>
+          <li>重新啟動伺服器</li>
+        </ol>
+        <n-text type="warning" style="display: block; margin-top: 8px; font-size: 12px">
+          ⚠️ 備份過程中伺服器將暫時無法使用
+        </n-text>
+      </div>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showBackupConfirmModal = false">取消</n-button>
+          <n-button type="primary" @click="executeFullBackupFlow">
+            確認備份
           </n-button>
         </n-space>
       </template>
@@ -206,5 +336,35 @@ defineExpose({ fetchBackups });
 
 .confirm-input {
   margin-top: 12px;
+}
+
+/* 備份確認 Modal */
+.backup-confirm-modal {
+  width: 90%;
+  max-width: 450px;
+}
+
+.backup-confirm-content {
+  line-height: 1.6;
+}
+
+.backup-steps {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: #aaa;
+}
+
+.backup-steps li {
+  margin: 4px 0;
+}
+
+/* 備份進度 */
+.backup-progress {
+  padding: 8px 12px;
+  background: rgba(234, 179, 8, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  margin-bottom: 12px;
+  text-align: center;
 }
 </style>

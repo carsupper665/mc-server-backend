@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, unref } from 'vue';
 import {
   NSpace,
   NButton,
@@ -70,8 +70,8 @@ const isRunning = computed(() => {
 
 const command = ref('');
 const consoleRef = ref(null);
-// 透過 computed 取得 console 元件中的 terminal 實例，供 MacroPanel 使用
-const termInstance = computed(() => consoleRef.value?.term);
+// 透過 computed 取得 console 元件中的 terminal 實例 (需要解包 ref)，供 MacroPanel 使用
+const termInstance = computed(() => unref(consoleRef.value?.term));
 
 // 樂觀更新狀態
 const isOptimisticLoading = ref(false);
@@ -232,6 +232,30 @@ const onStatusChange = (newStatus, oldStatus) => {
   optimisticAction.value = null;
 };
 
+// 當指令發送後延遲刷新日誌 (解決模板中 setTimeout 無法識別的問題)
+const handleCommandSent = () => {
+  setTimeout(() => fetchLogs(), 500);
+};
+
+// 備份流程相關函數 - 被 ServerBackups 元件呼叫
+const handleBackupStop = async () => {
+  try {
+    await api.post(`/mc-api/a/stop/${props.id}`);
+    smartPolling?.enterActiveMode();
+  } catch (err) {
+    console.error('Backup stop error:', err);
+  }
+};
+
+const handleBackupStart = async () => {
+  try {
+    await api.post(`/mc-api/a/start/${props.id}`);
+    smartPolling?.enterActiveMode();
+  } catch (err) {
+    console.error('Backup start error:', err);
+  }
+};
+
 onMounted(() => {
   // 載入持久化的指令歷史 - 移至 ServerConsole
   // loadCommandHistory();
@@ -296,7 +320,7 @@ onMounted(() => {
             :server-id="props.id"
             :is-running="isRunning"
             :macro-status="macroStatus"
-            @command-sent="() => setTimeout(fetchLogs, 500)"
+            @command-sent="handleCommandSent"
           />
         </n-grid-item>
 
@@ -340,8 +364,12 @@ onMounted(() => {
         v-if="activeTab === 'backups'"
         :server-id="props.id"
         :server-name="server.display_name"
+        :is-server-running="isRunning"
         class="fade-in-up"
         @recovery-started="smartPolling?.enterActiveMode()"
+        @request-stop="handleBackupStop"
+        @request-start="handleBackupStart"
+        @backup-started="smartPolling?.enterActiveMode()"
       />
 
       <!-- 設定檔 Tab -->
