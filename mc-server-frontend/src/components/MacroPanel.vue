@@ -1,15 +1,23 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { 
-  NCard, NButton, NSpace, NText, NIcon, NInput, NModal,
-  NEmpty, NPopconfirm, useMessage
+import { ref, onMounted } from 'vue';
+import {
+  NCard,
+  NButton,
+  NSpace,
+  NText,
+  NIcon,
+  NInput,
+  NModal,
+  NEmpty,
+  NPopconfirm,
+  useMessage,
 } from 'naive-ui';
-import { 
-  PlusOutlined, 
+import {
+  PlusOutlined,
   PlayCircleOutlined,
   EditOutlined,
   DeleteOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
 } from '@vicons/antd';
 import api from '../api';
 import { useActivityLogStore } from '../store/activityLog';
@@ -17,16 +25,16 @@ import { useActivityLogStore } from '../store/activityLog';
 const props = defineProps({
   serverId: {
     type: String,
-    required: true
+    required: true,
   },
   terminal: {
     type: Object,
-    default: null
+    default: null,
   },
   disabled: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 });
 
 const message = useMessage();
@@ -59,8 +67,8 @@ WAIT 5
 say Server will restart in 5s!
 WAIT 5
 save-all
-stop`
-        }
+stop`,
+        },
       ];
       saveMacros();
     }
@@ -111,7 +119,7 @@ const saveMacro = () => {
       macros.value[idx] = {
         ...macros.value[idx],
         name: macroName.value.trim(),
-        commands: macroCommands.value
+        commands: macroCommands.value,
       };
     }
   } else {
@@ -119,7 +127,7 @@ const saveMacro = () => {
     macros.value.push({
       id: `macro-${Date.now()}`,
       name: macroName.value.trim(),
-      commands: macroCommands.value
+      commands: macroCommands.value,
     });
   }
 
@@ -130,7 +138,7 @@ const saveMacro = () => {
 };
 
 // 刪除巨集
-const deleteMacro = (macroId) => {
+const deleteMacro = macroId => {
   const macro = macros.value.find(m => m.id === macroId);
   macros.value = macros.value.filter(m => m.id !== macroId);
   saveMacros();
@@ -139,34 +147,39 @@ const deleteMacro = (macroId) => {
 };
 
 // 休眠函式
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+const emit = defineEmits(['update:status']);
 
 // 執行巨集
-const executeMacro = async (macro) => {
+const executeMacro = async macro => {
   if (isExecuting.value || props.disabled) return;
-  
+
   isExecuting.value = true;
   executingMacroId.value = macro.id;
-  
+
   const term = props.terminal;
   const lines = macro.commands.split('\n').filter(l => l.trim());
-  
+
   term?.writeln(`\x1b[1;35m▶ [MACRO] 開始執行: ${macro.name}\x1b[0m`);
-  
+  emit('update:status', { active: true, message: `開始執行: ${macro.name}`, type: 'info' });
+
   try {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       // 檢查 WAIT 指令
       if (line.toUpperCase().startsWith('WAIT ')) {
         const seconds = parseInt(line.substring(5));
         if (!isNaN(seconds) && seconds > 0) {
           term?.writeln(`\x1b[1;33m⏳ [MACRO] 等待 ${seconds} 秒...\x1b[0m`);
+          emit('update:status', { active: true, message: `等待 ${seconds} 秒...`, type: 'warning' });
           await sleep(seconds * 1000);
         }
       } else if (line) {
         // 執行指令
         term?.writeln(`\x1b[1;36m▸ [MACRO] ${line}\x1b[0m`);
+        emit('update:status', { active: true, message: `執行: ${line}`, type: 'info' });
         try {
           await api.post(`/mc-api/a/cmd/${props.serverId}`, { command: line });
         } catch (err) {
@@ -176,7 +189,7 @@ const executeMacro = async (macro) => {
         await sleep(300);
       }
     }
-    
+
     term?.writeln(`\x1b[1;32m✓ [MACRO] 執行完成: ${macro.name}\x1b[0m`);
     activityLog.logMacroExecute(macro.name, props.serverId, props.serverId);
     message.success('巨集執行完成');
@@ -186,6 +199,7 @@ const executeMacro = async (macro) => {
   } finally {
     isExecuting.value = false;
     executingMacroId.value = null;
+    emit('update:status', null); // Clear status
   }
 };
 
@@ -202,59 +216,56 @@ onMounted(() => {
         <n-text strong class="panel-title">MACROS</n-text>
       </n-space>
     </template>
-    
+
     <template #header-extra>
-      <n-button 
-        size="tiny" 
-        quaternary 
-        @click="openEditor()"
-        :disabled="isExecuting"
-      >
-        <template #icon><n-icon><PlusOutlined /></n-icon></template>
+      <n-button size="tiny" quaternary :disabled="isExecuting" @click="openEditor()">
+        <template #icon
+          ><n-icon><PlusOutlined /></n-icon
+        ></template>
       </n-button>
     </template>
-    
+
     <div class="macro-list">
       <n-empty v-if="macros.length === 0" description="尚無巨集" size="small" />
-      
-      <div 
-        v-for="macro in macros" 
-        :key="macro.id" 
+
+      <div
+        v-for="macro in macros"
+        :key="macro.id"
         class="macro-item"
         :class="{ 'macro-executing': executingMacroId === macro.id }"
       >
         <n-text class="macro-name">{{ macro.name }}</n-text>
         <n-space :size="4">
-          <n-button 
-            size="tiny" 
+          <n-button
+            size="tiny"
             type="success"
             quaternary
             :loading="executingMacroId === macro.id"
             :disabled="disabled || (isExecuting && executingMacroId !== macro.id)"
-            @click="executeMacro(macro)"
             title="執行巨集"
+            @click="executeMacro(macro)"
           >
-            <template #icon><n-icon><PlayCircleOutlined /></n-icon></template>
+            <template #icon
+              ><n-icon><PlayCircleOutlined /></n-icon
+            ></template>
           </n-button>
-          <n-button 
-            size="tiny" 
+          <n-button
+            size="tiny"
             quaternary
             :disabled="isExecuting"
-            @click="openEditor(macro)"
             title="編輯"
+            @click="openEditor(macro)"
           >
-            <template #icon><n-icon><EditOutlined /></n-icon></template>
+            <template #icon
+              ><n-icon><EditOutlined /></n-icon
+            ></template>
           </n-button>
           <n-popconfirm @positive-click="deleteMacro(macro.id)">
             <template #trigger>
-              <n-button 
-                size="tiny" 
-                type="error" 
-                quaternary
-                :disabled="isExecuting"
-                title="刪除"
-              >
-                <template #icon><n-icon><DeleteOutlined /></n-icon></template>
+              <n-button size="tiny" type="error" quaternary :disabled="isExecuting" title="刪除">
+                <template #icon
+                  ><n-icon><DeleteOutlined /></n-icon
+                ></template>
               </n-button>
             </template>
             確定要刪除此巨集嗎？
@@ -262,10 +273,10 @@ onMounted(() => {
         </n-space>
       </div>
     </div>
-    
+
     <!-- 編輯 Modal -->
-    <n-modal 
-      v-model:show="showEditor" 
+    <n-modal
+      v-model:show="showEditor"
       preset="card"
       :title="editingMacro ? '編輯巨集' : '新增巨集'"
       class="macro-editor-modal"
@@ -274,19 +285,18 @@ onMounted(() => {
     >
       <n-space vertical :size="16">
         <div>
-          <n-text depth="3" style="font-size: 12px; margin-bottom: 4px; display: block;">巨集名稱</n-text>
-          <n-input 
-            v-model:value="macroName" 
-            placeholder="例如：Restart Countdown"
-          />
+          <n-text depth="3" style="font-size: 12px; margin-bottom: 4px; display: block"
+            >巨集名稱</n-text
+          >
+          <n-input v-model:value="macroName" placeholder="例如：Restart Countdown" />
         </div>
-        
+
         <div>
-          <n-text depth="3" style="font-size: 12px; margin-bottom: 4px; display: block;">
+          <n-text depth="3" style="font-size: 12px; margin-bottom: 4px; display: block">
             指令序列 (每行一條指令，使用 WAIT n 來等待 n 秒)
           </n-text>
-          <n-input 
-            v-model:value="macroCommands" 
+          <n-input
+            v-model:value="macroCommands"
             type="textarea"
             :rows="8"
             placeholder="say Hello World
@@ -296,7 +306,7 @@ say Goodbye"
           />
         </div>
       </n-space>
-      
+
       <template #footer>
         <n-space justify="end">
           <n-button @click="showEditor = false">取消</n-button>
