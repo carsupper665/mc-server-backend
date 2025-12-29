@@ -1,0 +1,79 @@
+// router/api.go
+
+package router
+
+import (
+	"go-backend/common"
+	"go-backend/controller"
+	"go-backend/middleware"
+	"go-backend/service"
+
+	// "go-backend/middleware"
+
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
+)
+
+func SetAPIRouter(router *gin.Engine) {
+	pl := common.GetPortList(30000, 30050)
+
+	mgr := service.NewServerManager(pl)
+	svc := service.NewServerService(mgr)
+	c := controller.NewServerController(svc)
+	router.Use(middleware.CORS())
+	mcapi := router.Group("/mc-api")
+	mcapi.Use(gzip.Gzip(gzip.DefaultCompression),
+		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
+		middleware.GloabalIPFilter(),
+		middleware.UserAgentFilter(),
+	)
+	{
+		mcapi.GET("/finfo", controller.GetAllFabricVersions)
+		mcapi.GET("/vinfo", controller.GetAllVanillaVersions)
+	}
+	amcapi := mcapi.Group("/a")
+	amcapi.Use(middleware.ValidateJWT())
+	{
+		amcapi.POST("/create", controller.CreateServer)
+		amcapi.POST("/backup/:server_id", c.Backup)
+		amcapi.POST("/status/:server_id", c.GetStatus)
+		amcapi.POST("/stop/:server_id", c.Stop)
+		amcapi.POST("/start/:server_id", c.Start)
+		amcapi.POST("/ls-backup/:server_id", c.ListServerBackup)
+		amcapi.POST("/property/:server_id", c.GetServerProperties)
+		amcapi.POST("/UploadProperty/:server_id", c.UploadProperty)
+		amcapi.POST("/cmd/:server_id", c.SendCommand)
+		amcapi.POST("/recover", c.SaveRollBack)
+	}
+	sapi := router.Group("/server-api")
+	sapi.Use(gzip.Gzip(gzip.DefaultCompression),
+		middleware.UserAgentFilter(),
+		middleware.GloabalIPFilter(),
+	)
+	asapi := sapi.Group("/a")
+	asapi.Use(middleware.ValidateJWT())
+	{
+		asapi.GET("/log/:server_id", c.GetServerLog)
+	}
+
+	testApi := router.Group("/test-api")
+	testApi.Use(gzip.Gzip(gzip.DefaultCompression),
+		middleware.DebugMode(),
+	)
+	{
+		testApi.POST("/mc-server/create", controller.CreateServer)
+		testApi.POST("/status/:server_id", c.GetStatus)
+		testApi.POST("/startmyserver/:server_id", c.Start)
+		testApi.POST("/stopmyserver/:server_id", c.Stop)
+		testApi.POST("/:server_id/property", c.GetServerProperties)
+		testApi.POST("/:server_id/Upproperty", c.UploadProperty)
+		testApi.GET("/:server_id/bc", c.Backup)
+	}
+
+	client := mcapi.Group("/client")
+	client.Use(middleware.ClientAppAuth())
+	{
+		client.GET("/getUserInfo", controller.GetUserInfo)
+	}
+
+}
