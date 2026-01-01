@@ -43,6 +43,7 @@ func SetAPIRouter(router *gin.Engine) {
 		amcapi.POST("/property/:server_id", c.GetServerProperties)
 		amcapi.POST("/UploadProperty/:server_id", c.UploadProperty)
 		amcapi.POST("/cmd/:server_id", c.SendCommand)
+		amcapi.GET("/usage/:server_id", c.ServerUsage)
 		amcapi.POST("/recover", c.SaveRollBack)
 	}
 	sapi := router.Group("/server-api")

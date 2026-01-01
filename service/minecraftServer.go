@@ -42,6 +42,10 @@ func (s *ServerService) Start(sid, oid, workDir, maxMem, minMem string, args []s
 	return s.mgr.StartServer(sid, oid, workDir, maxMem, minMem, args)
 }
 
+func (s *ServerService) GetServerUsage(sid string) (Snapshot, error) {
+	return s.mgr.GetServerUsage(sid)
+}
+
 func (s *ServerService) Stop(sid string) error {
 	return s.mgr.StopServer(sid)
 }
