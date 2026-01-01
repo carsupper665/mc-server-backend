@@ -161,6 +161,50 @@ func (sc *ServerController) ListServerBackup(c *gin.Context) {
 	c.JSON(200, gin.H{"backups": backups})
 }
 
+type Usages struct {
+	CPUUsage    float64 `json:"cpu_usage"`
+	MemoryUsage uint64  `json:"memory_usage"`
+	Threads     int32   `json:"threads"`
+}
+
+func (sc *ServerController) ServerUsage(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uintId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if err := model.IsOwner(uintId, serverID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+
+	}
+
+	usage, err := sc.svc.GetServerUsage(serverID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			c.JSON(404, gin.H{"error": "Server not found"})
+			return
+		}
+		common.LogDebug(c.Request.Context(), "GetServerUsage error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to get server usage"})
+		return
+	}
+
+	var usageResponse Usages
+	usageResponse.CPUUsage = usage.CPU
+	usageResponse.MemoryUsage = usage.VMS
+	usageResponse.Threads = usage.Threads
+
+	c.JSON(200, gin.H{"usage": usage})
+}
+
 func (sc *ServerController) SaveRollBack(c *gin.Context) {
 	var req SaveRollBackRequest
 

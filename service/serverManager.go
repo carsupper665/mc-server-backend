@@ -27,42 +27,43 @@ var ErrMaxReached = errors.New("User has reached the maximum number of servers")
 var ErrServerRunning = errors.New("Cannot Backup while server is running")
 
 type Server struct {
-	sid          string
-	oid          string
-	workDir      string
-	maxMem       string
-	minMem       string
-	port         string
-	cmd          *exec.Cmd
-	stdin        io.Writer
-	stdout       io.Reader
-	logBuffer    *bytes.Buffer
-	serverStatus string
-	exp          time.Time
-	sdc          func(string)
-	args         []string
-	mu           sync.RWMutex
+	sid       string
+	oid       string
+	workDir   string
+	maxMem    string
+	minMem    string
+	port      string
+	cmd       *exec.Cmd
+	Monitor   *Monitor
+	stdin     io.Writer
+	stdout    io.Reader
+	logBuffer *bytes.Buffer
+	running   bool
+	exp       time.Time
+	sdc       func(string)
+	args      []string
+	mu        sync.RWMutex
 }
 
 func NewServer(sid, oid, workDir, maxMem, minMem string, portStr string, callback func(string), args []string) *Server {
 	return &Server{
-		sid:          sid,
-		oid:          oid,
-		workDir:      workDir,
-		maxMem:       maxMem,
-		minMem:       minMem,
-		port:         portStr,
-		serverStatus: "stopped",
-		sdc:          callback,
-		args:         args,
-		logBuffer:    &bytes.Buffer{},
+		sid:       sid,
+		oid:       oid,
+		workDir:   workDir,
+		maxMem:    maxMem,
+		minMem:    minMem,
+		port:      portStr,
+		running:   false,
+		sdc:       callback,
+		args:      args,
+		logBuffer: &bytes.Buffer{},
 	}
 }
 
 func (s *Server) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.serverStatus == "running" {
+	if s.running {
 		return ErrAlreadyRunning
 	}
 	// 建立命令參數
@@ -93,7 +94,11 @@ func (s *Server) Start() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	s.serverStatus = "running"
+	s.running = true
+	pid := int32(cmd.Process.Pid)
+	mon, err := SetUpMonitor(pid)
+	s.Monitor = mon
+	s.Monitor.Start(2 * time.Second) // 2 Seconds interval
 	s.exp = time.Now().Add(3 * time.Minute)
 	go s.captureLogs()
 	go s.waitAndCleanup()
@@ -107,15 +112,32 @@ func (s *Server) captureLogs() {
 func (s *Server) waitAndCleanup() {
 	s.cmd.Wait()
 	s.mu.Lock()
-	s.serverStatus = "stopped"
+	s.running = false
 	s.exp = time.Now().Add(3 * time.Minute)
+	s.Monitor.Stop()
 	s.mu.Unlock()
+}
+
+func (s *Server) GetLatestSnapshot() (snap Snapshot, ok bool) {
+	// 先在鎖內只取需要的指標/狀態，避免鎖耦合
+	s.mu.RLock()
+	mon := s.Monitor
+	status := s.running
+	s.mu.RUnlock()
+
+	if mon != nil {
+		return mon.Snapshot(), true
+	}
+	if !status {
+		return Snapshot{}, false
+	}
+	return Snapshot{}, false
 }
 
 func (s *Server) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cmd == nil || s.serverStatus != "running" {
+	if s.cmd == nil || !s.running {
 		return errors.New("server not running")
 	}
 
@@ -140,7 +162,7 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	s.serverStatus = "stopped"
+	s.running = false
 	s.exp = time.Now().Add(3 * time.Minute)
 	return nil
 }
@@ -155,7 +177,10 @@ func (s *Server) Restart() error {
 func (s *Server) Status() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.serverStatus
+	if !s.running {
+		return "stopped"
+	}
+	return "running"
 }
 
 func (s *Server) Port() string {
@@ -184,7 +209,7 @@ func (s *Server) ReadLatestLog() string {
 func (s *Server) SendCommand(cmd string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.serverStatus != "running" {
+	if !s.running {
 		return errors.New("server not running")
 	}
 	_, err := io.WriteString(s.stdin, cmd+"\n")
@@ -195,7 +220,7 @@ func (s *Server) SetProperty(key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.serverStatus == "running" {
+	if s.running {
 		return errors.New("必須先停止 server 才能修改 server.properties")
 	}
 	return UpdateProperty(s.workDir, key, value)
@@ -203,11 +228,11 @@ func (s *Server) SetProperty(key, value string) error {
 
 func (s *Server) ShutDown() error {
 	s.mu.RLock()
-	status := s.serverStatus
+	status := s.running
 	callback := s.sdc
 	sid := s.sid
 	s.mu.RUnlock()
-	if status == "running" {
+	if status {
 		if err := s.Stop(); err != nil {
 			return err
 		}
@@ -423,6 +448,20 @@ func (sm *ServerManager) RestartServer(sid string) error {
 		return ErrNotFound
 	}
 	return srv.Restart()
+}
+
+func (sm *ServerManager) GetServerUsage(sid string) (Snapshot, error) {
+	sm.mu.RLock()
+	srv, exists := sm.servers[sid]
+	sm.mu.RUnlock()
+	if !exists {
+		return Snapshot{}, ErrNotFound
+	}
+	snap, ok := srv.GetLatestSnapshot()
+	if !ok {
+		return snap, ErrNotFound
+	}
+	return snap, nil
 }
 
 func (sm *ServerManager) GetServerStatus(sid string) (string, error) {

@@ -4,7 +4,6 @@
 # Binaries for programs and plugins
 *.exe
 *.exe~
-*.bk
 *.dll
 *.so
 *.dylib
@@ -33,5 +32,5 @@ minecraft_servers/*
 servers/*
 # Editor/IDE
 .idea/*
-.vscode/
+# .vscode/
 build/

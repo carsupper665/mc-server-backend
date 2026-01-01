@@ -1,127 +1,126 @@
-# Go 後端
+# Go Backend
 
-一個使用 Go 語言編寫的輕量級後端服務，僅供娛樂和實驗使用。
+A lightweight backend service written in Go, created just for fun and experimentation.
 
-## 概述
+## Overview
 
-一個簡單的後端應用程式，具有以下功能（註：所有功能仍在開發中，尚未完全實現。）：
-- 登入認證
-- 身份管理
-- 管理
-- 遊戲伺服器控制
-- 雲端儲存
-- 我稍後再想想。;D
+A simple backend application with the following features(P.S. All features are still under development and not yet fully functional.):
+- Login authentication
+- Identity management
+- management
+- Game server control
+- Cloud storage
+- I'll think about it later. ;D
 
-## 開始使用
+## Getting Started
 
-1. 複製儲存庫  
+1. Clone the repository  
    ```bash
    git clone https://github.com/carsupper665/web-server-backend.git
    cd web-server-backend
    ```
 
-2. 在專案根目錄建立 `.env` 檔案（詳細說明見下方）。
+2. Create a `.env` file in the project root (see below for details).
 
-3. 安裝依賴並執行：  
+3. Install dependencies and run:  
    ```bash
    go mod download
    go run main.go
    ```
 
-4. 伺服器將在您於 `.env` 中指定的端口啟動（預設 `8080`）。
+4. The server will start on the port you specify in your `.env` (default `8080`).
 
 ---
 
-## `.env` 配置
+## `.env` Configuration
 
-在專案根目錄建立一個名為 `.env` 的檔案，包含以下變數：
+Create a file named `.env` in the project root with the following variables:
 
 ```dotenv
-# 前端應用程式的 URL（例如 http://localhost:3000）
+# URL of your frontend application (e.g. http://localhost:3000)
 FRONTEND_BASE_URL=
 
-# 後端監聽的端口
+# Port for the backend to listen on
 PORT=8080
 
-# 啟用除錯日誌（true 或 false）
+# Enable debug logging (true or false)
 DEBUG=false
 
-# 會話和加密密鑰
+# Session and cryptography secrets
 SESSION_SECRET=your-secret-key
 CRYPTO_SECRET=your-crypto-secret
 
-# 路徑和快取
+# Paths and caching
 SQLITE_PATH=path/to/db.sqlite
 MEMORY_CACHE_ENABLED=false
 
-# 計時設定（以秒為單位）
+# Timing settings (in seconds)
 SYNC_FREQUENCY=60
 BATCH_UPDATE_INTERVAL=300
 RELAY_TIMEOUT=30
 
-# 資料庫連接池設定：
-#   SQL_MAX_IDLE_CONNS: 連接池中保留的最大空閒連接數（預設: 100）
+# Database connection pool settings:
+#   SQL_MAX_IDLE_CONNS: maximum number of idle connections retained in the pool (default: 100)
 SQL_MAX_IDLE_CONNS=100
 
-#   SQL_MAX_OPEN_CONNS: 同時打開的資料庫連接最大數量（預設: 1000）
+#   SQL_MAX_OPEN_CONNS: maximum number of open connections to the database at once (default: 1000)
 SQL_MAX_OPEN_CONNS=1000
 
-#   SQL_MAX_LIFETIME: 連接在被關閉前可以重用的最大時間（以秒為單位，預設: 60）
+#   SQL_MAX_LIFETIME: maximum time in seconds a connection may be reused before being closed (default: 60)
 SQL_MAX_LIFETIME=60
 
-# 在啟動時自動建立根/管理員用戶（true 或 false）
+# Automatically create a root/admin user on startup (true or false)
 CREATE_ROOT_USER=true
 ```
 
-### 變數說明
+### Variable Descriptions
 
 - **FRONTEND_BASE_URL**  
-  前端應用程式託管的基礎 URL（例如 `http://localhost:3000`）。用於配置 CORS 和生成連結。
+  The base URL where your frontend application is hosted (e.g. `http://localhost:3000`). This is used to configure CORS and generate links.
 
 - **PORT**  
-  Go HTTP 伺服器監聽的 TCP 端口（預設: `3000`）。
+  The TCP port on which the Go HTTP server listens (default: `3000`).
 
 - **DEBUG**  
-  設置為 `true` 時，啟用詳細日誌和除錯端點。生產環境請使用 `false`。
+  When set to `true`, enables verbose logging and debug endpoints. Use `false` in production.
 
 - **SESSION_SECRET**  
-  用於簽名和驗證會話 Cookie 的密鑰。請保持此密鑰安全且隨機。
+  A secret key used to sign and validate session cookies. Keep this secure and random.
 
 - **CRYPTO_SECRET**  
-  用於加密和解密敏感資料的密鑰。
+  A secret used for encrypting and decrypting sensitive data.
 
 - **SQLITE_PATH**  
-  SQLite 資料庫的檔案路徑。範例：`./data/db.sqlite`。
+  The file path to the SQLite database. Example: `./data/db.sqlite`.
 
 - **MEMORY_CACHE_ENABLED**  
-  啟用記憶體快取（`true` 或 `false`）。
+  Enable in-memory caching (`true` or `false`).
 
 - **SYNC_FREQUENCY**  
-  背景同步任務應多久執行一次（以秒為單位）。
+  How often (in seconds) background sync tasks should run.
 
 - **BATCH_UPDATE_INTERVAL**  
-  批次更新操作之間的間隔（以秒為單位）。
+  Interval (in seconds) between batch update operations.
 
 - **RELAY_TIMEOUT**  
-  中繼操作在放棄前的逾時時間（以秒為單位）。
+  Timeout (in seconds) for relay operations before giving up.
 
 - **SQL_MAX_IDLE_CONNS**  
-  資料庫連接池將保持打開的最大空閒（未使用）連接數。  
-  預設：`100`。
+  The maximum number of idle (unused) connections that the database connection pool will keep open.  
+  Default: `100`.
 
 - **SQL_MAX_OPEN_CONNS**  
-  資料庫同時打開的最大連接總數。  
-  預設：`1000`。
+  The maximum total number of open connections to your database.  
+  Default: `1000`.
 
 - **SQL_MAX_LIFETIME**  
-  連接在被關閉和替換之前可以重用的最大時間（以秒為單位）。  
-  預設：`60`。
+  The maximum amount of time (in seconds) a connection may be reused before being closed and replaced.  
+  Default: `60`.
 
 - **CREATE_ROOT_USER**  
-  如果為 `true`，應用程式將在啟動時（當不存在根用戶時）自動建立預設的根（管理員）用戶。  
-  設置為 `false` 以停用自動用戶建立。
+  If `true`, the application will automatically create a default root (admin) user on startup when none exists.  
+  Set to `false` to disable automatic user creation.
 
 ---
-## 參考
-
-- 本專案受到 [QuantumNous/new-api](https://github.com/QuantumNous/new-api) 的啟發
+## References
+- This project is inspired by [QuantumNous/new-api](https://github.com/QuantumNous/new-api)
