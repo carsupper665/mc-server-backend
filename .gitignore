@@ -8,6 +8,7 @@
 *.so
 *.dylib
 *.db
+*.bk
 
 # Test binary, built with `go test -c`
 *.test
@@ -32,5 +33,5 @@ minecraft_servers/*
 servers/*
 # Editor/IDE
 .idea/*
-# .vscode/
+.vscode/
 build/
