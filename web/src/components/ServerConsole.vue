@@ -174,6 +174,7 @@ import {
   NInputGroupLabel, useMessage, NModal, NTabs, NTabPane 
 } from 'naive-ui';
 // ... (rest of code)
+import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import api from '../api';
