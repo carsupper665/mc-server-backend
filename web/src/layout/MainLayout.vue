@@ -12,7 +12,8 @@ import {
   HddOutlined,
   UserOutlined,
   LogoutOutlined,
-  MenuOutlined
+  MenuOutlined,
+  TeamOutlined
 } from '@vicons/antd';
 
 const router = useRouter();
@@ -42,6 +43,15 @@ const menuOptions = [
     icon: () => h(NIcon, null, { default: () => h(HddOutlined) }),
     onClick: () => {
       router.push({ name: 'Servers' });
+      showMobileMenu.value = false;
+    }
+  },
+  {
+    label: 'Among Us',
+    key: 'AmongUs',
+    icon: () => h(NIcon, null, { default: () => h(TeamOutlined) }),
+    onClick: () => {
+      router.push({ name: 'AmongUs' });
       showMobileMenu.value = false;
     }
   }
