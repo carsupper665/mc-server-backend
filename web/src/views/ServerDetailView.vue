@@ -113,8 +113,15 @@ const fetchLogs = async () => {
   try {
     const res = await api.get(`/server-api/a/log/${props.id}`);
     // API interceptor 已返回 response.data
-    const logData = typeof res === 'string' ? res : res?.data || res?.log || res;
+    const logData =
+      typeof res === 'string'
+        ? res
+        : typeof res === 'object' && res
+          ? res.logs || res.log || res.data || ''
+          : '';
+
     if (logData && typeof logData === 'string' && consoleRef.value) {
+      consoleRef.value.term?.value?.clear?.(); // replace console content
       consoleRef.value.writeLog(logData);
     }
   } catch (err) {
