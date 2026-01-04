@@ -20,7 +20,7 @@ import (
 
 var DB *gorm.DB
 
-var LOG_DB *gorm.DB
+//var LOG_DB *gorm.DB
 
 func createRootAccountForTest() error {
 	var user User
@@ -87,6 +87,7 @@ func migrateDB() error {
 		&BlockedIP{},
 		&LoginAttempt{},
 		&Book{},
+		&UpdateLog{},
 	)
 
 	if err != nil {

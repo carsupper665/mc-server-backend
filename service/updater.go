@@ -6,27 +6,61 @@ import (
 	"errors"
 	"fmt"
 	"go-backend/common"
+	"go-backend/model"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
-const repo = "carsupper665/mc-server-backend"
-const logName = "update.log"
+const (
+	tmpName    = "main_new.exe"
+	curr       = "main.exe"
+	backup     = "main.exe.bk"
+	logName    = "update.log"
+	checkerLog = "update_checker.log"
+	repo       = "carsupper665/mc-server-backend"
+)
 
-var ErrAlreadyLatest = fmt.Errorf("Already updated.")
-var ErrUpdateDisabled = fmt.Errorf("Auto update is disabled.")
+var (
+	ErrAlreadyLatest  = errors.New("already updated")
+	ErrUpdateDisabled = errors.New("auto update is disabled")
+	ErrAlreadyStarted = errors.New("update checker already started")
+	ErrHashMismatch   = errors.New("downloaded file hash mismatch")
+)
+
+type status struct {
+	running bool
+	mu      sync.RWMutex
+}
+
+func (s *status) IsRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.running
+}
+
+func (s *status) SetRunning(r bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.running = r
+}
+
+var UpdaterStatus = &status{
+	running: false,
+	mu:      sync.RWMutex{},
+}
 
 type release struct {
 	TagName string `json:"tag_name"`
 	HTMLURL string `json:"html_url"`
 	Assets  []struct {
 		Name               string `json:"name"`
-		Digest             string `json:"digest"` // SHA256 checksum
+		Digest             string `json:"digest"`
 		BrowserDownloadURL string `json:"browser_download_url"`
 	} `json:"assets"`
 }
@@ -38,52 +72,28 @@ type UpdateLogger struct {
 }
 
 func (u *UpdateLogger) Write(p []byte) (n int, err error) {
-	// 無修改寫到 console
 	if _, err = u.console.Write(p); err != nil {
 		return len(p), err
 	}
-	// 去掉 ANSI code，再寫到 file
 	clean := u.strip.ReplaceAll(p, []byte(""))
 	if _, err = u.file.Write(clean); err != nil {
 		return len(p), err
 	}
-
 	return len(p), nil
-}
-
-func (u *UpdateLogger) Debug(msg string) {
-	if !common.DebugMode {
-		return
-	}
-	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorBrightBlue+"[UPDT][DEBUG]", common.ColorReset, msg)
 }
 
 func (u *UpdateLogger) Info(msg string) {
 	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorBrightGreen+"[UPDT][INFO]", common.ColorReset, msg)
 }
 
-func (u *UpdateLogger) Warn(msg string) {
-	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorYellow+"[UPDT][WARN]", common.ColorReset, msg)
-}
-
 func (u *UpdateLogger) Error(msg string) {
 	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorRed+"[UPDT][ERROR]", common.ColorReset, msg)
+	_ = model.WriteUpdateErrorLog(msg)
 }
 
 func (u *UpdateLogger) Close() error {
-	consoleCloser, ok := u.console.(io.Closer)
-	fileCloser, ok2 := consoleCloser.(io.Closer)
-	if ok {
-		err := consoleCloser.Close()
-		if err != nil {
-			return err
-		}
-	}
-	if ok2 {
-		err := fileCloser.Close()
-		if err != nil {
-			return err
-		}
+	if fileCloser, ok := u.file.(io.Closer); ok {
+		return fileCloser.Close()
 	}
 	return nil
 }
@@ -92,126 +102,275 @@ func newLogger(console, file io.Writer) *UpdateLogger {
 	return &UpdateLogger{
 		console: console,
 		file:    file,
-		// 這個正則會匹配所有 ANSI Escape Code
-		strip: regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`),
+		strip:   regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`),
 	}
 }
 
-func getLogger() *UpdateLogger {
+func getLogger(logFile string) *UpdateLogger {
 	if *common.LogDir != "" {
-		logFilePath := fmt.Sprintf("%s/%s", *common.LogDir, logName)
-		file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		logFilePath := fmt.Sprintf("%s/%s", *common.LogDir, logFile)
+		file, err := os.OpenFile(logFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal("failed to open log file:", err)
 		}
-
 		return newLogger(os.Stdout, file)
 	}
 	return nil
 }
 
+// CheckForUpdates 初次啟動時的更新檢查
 func CheckForUpdates() error {
-	var logger = getLogger()
+	logger := getLogger(logName)
 	if logger == nil {
-		return errors.New("startup logger failed.")
+		_ = model.WriteUpdateErrorLog("startup logger failed")
+		return errors.New("startup logger failed")
 	}
-	if common.GetEnvOrDefaultBool("AUTO_UPDATE", false) == false {
-		logger.Info("Auto update is disabled, skipping update check.")
+	defer logger.Close()
+
+	_ = model.SetLastCheck(time.Now())
+
+	if UpdaterStatus.IsRunning() {
+		logger.Info("update check already running, skipping...")
+		return ErrAlreadyStarted
+	}
+
+	UpdaterStatus.SetRunning(true)
+	defer UpdaterStatus.SetRunning(false)
+
+	if !common.GetEnvOrDefaultBool("AUTO_UPDATE", false) {
+		logger.Info("Auto update is disabled")
+		_ = model.SetStatus("auto update disabled")
 		return ErrUpdateDisabled
 	}
+
 	logger.Info("Checking for updates...")
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url)
+	// 獲取最新版本資訊
+	r, err := fetchLatestRelease(logger)
 	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Error(fmt.Sprintf("Failed to get latest version of %s. Status: %s", repo, resp.Status))
-		return fmt.Errorf("unexpected status: %s", resp.Status)
-	}
-
-	var r release
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return err
 	}
 
 	if r.TagName == common.Version+common.Build {
 		logger.Info("You are running the latest version: " + common.Version + common.Build)
+		_ = model.SetStatus("latest version")
 		return ErrAlreadyLatest
 	}
 
-	logger.Info("updating....")
+	logger.Info("New version available: " + r.TagName)
 	dlUrl := r.Assets[0].BrowserDownloadURL
 	hashString := strings.TrimPrefix(r.Assets[0].Digest, "sha256:")
-	err = downloadAndApplyUpdate(dlUrl, hashString, logger)
-	if err != nil {
+
+	if err := downloadAndApplyUpdate(dlUrl, hashString, logger); err != nil {
+		_ = model.SetStatus("update failed")
 		return err
 	}
+
+	_ = model.SetStatus("updated to " + r.TagName)
+	_ = model.UpdateTime()
+	_ = model.ClearUpdateError()
+	logger.Info("Update applied successfully 🎉")
 
 	return nil
 }
 
-func downloadAndApplyUpdate(url, expectedHash string, logger *UpdateLogger) error {
-	const (
-		tmpName = "main_new.exe"
-		curr    = "main.exe"
-		backup  = "main.exe.bk"
-	)
+// fetchLatestRelease 獲取最新版本資訊
+func fetchLatestRelease(logger *UpdateLogger) (*release, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 
-	logger.Info(fmt.Sprintf("Downloading update from %s", url))
-
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
-		logger.Error("failed to download update: " + err.Error())
+		logger.Error("failed to fetch release info: " + err.Error())
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status: %s", resp.Status)
+		logger.Error(err.Error())
+		return nil, err
+	}
+
+	var r release
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		logger.Error("failed to decode response: " + err.Error())
+		return nil, err
+	}
+
+	return &r, nil
+}
+
+func downloadAndApplyUpdate(url, expectedHash string, logger *UpdateLogger) error {
+	logger.Info("Downloading update...")
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Get(url)
+	if err != nil {
+		logger.Error("failed to download: " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status: %s", resp.Status)
+		logger.Error(err.Error())
+		return err
+	}
 
 	tmpFile, err := os.Create(tmpName)
 	if err != nil {
 		logger.Error("failed to create temp file: " + err.Error())
 		return err
 	}
-	defer tmpFile.Close()
 
-	// 下載 + 同時計算 hash
+	var downloadErr error
+	defer func() {
+		tmpFile.Close()
+		if downloadErr != nil {
+			os.Remove(tmpName)
+		}
+	}()
+
 	hasher := sha256.New()
 	writer := io.MultiWriter(tmpFile, hasher)
 
-	_, err = io.Copy(writer, resp.Body)
+	written, err := io.Copy(writer, resp.Body)
 	if err != nil {
+		downloadErr = err
 		logger.Error("failed to save update: " + err.Error())
 		return err
 	}
 
-	hashSum := fmt.Sprintf("%x", hasher.Sum(nil))
-	if hashSum != expectedHash {
-		logger.Error(fmt.Sprintf("hash mismatch: expected %s got %s", expectedHash, hashSum))
-		os.Remove(tmpName)
-		return fmt.Errorf("hash mismatch")
+	logger.Info(fmt.Sprintf("Downloaded %d bytes", written))
+
+	// 同步到磁碟
+	if err := tmpFile.Sync(); err != nil {
+		downloadErr = err
+		logger.Error("failed to sync: " + err.Error())
+		return err
 	}
 
-	logger.Info("hash verified successfully")
+	// 驗證 hash
+	hashSum := fmt.Sprintf("%x", hasher.Sum(nil))
+	if hashSum != expectedHash {
+		downloadErr = ErrHashMismatch
+		logger.Error(fmt.Sprintf("hash mismatch: expected %s got %s", expectedHash, hashSum))
+		return ErrHashMismatch
+	}
 
+	logger.Info("Hash verified successfully")
+
+	// 備份舊版本
 	if _, err := os.Stat(curr); err == nil {
-		logger.Info("backing up old executable")
-		os.Remove(backup) // 如果已經有舊的 .bk
+		logger.Info("Backing up old executable")
+		os.Remove(backup)
 		if err := os.Rename(curr, backup); err != nil {
-			logger.Error("failed to backup old exe: " + err.Error())
+			logger.Error("failed to backup: " + err.Error())
 			return err
 		}
 	}
-	_ = tmpFile.Close()
-	logger.Info("replacing executable with updated version")
+
+	// 關閉檔案
+	if err := tmpFile.Close(); err != nil {
+		logger.Error("failed to close temp file: " + err.Error())
+		return err
+	}
+
+	// 替換執行檔
+	logger.Info("Replacing executable")
 	if err := os.Rename(tmpName, curr); err != nil {
 		logger.Error("failed to replace exe: " + err.Error())
 		return err
 	}
 
-	logger.Info("update applied successfully 🎉")
+	return nil
+}
+
+func StartUpdateChecker(interval time.Duration, onUpdateSuccess func()) {
+	go updateChecker(interval, onUpdateSuccess)
+}
+
+// updateChecker 背景更新檢查器
+func updateChecker(interval time.Duration, onUpdateSuccess func()) {
+	logger := getLogger(checkerLog)
+	if logger == nil {
+		common.SysError("failed to start update checker logger")
+		return
+	}
+	defer logger.Close()
+
+	logger.Info(fmt.Sprintf("Update checker started, interval: %s", interval))
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			logger.Info("Running scheduled update check...")
+
+			if err := performUpdate(logger); err != nil {
+				if errors.Is(err, ErrAlreadyLatest) {
+					logger.Info("Already at latest version")
+				} else if errors.Is(err, ErrUpdateDisabled) {
+					logger.Info("Auto update is disabled")
+				} else {
+					logger.Error("Update check failed: " + err.Error())
+				}
+			} else {
+				// 更新成功
+				logger.Info("Update successful! Triggering restart...")
+				if onUpdateSuccess != nil {
+					onUpdateSuccess()
+				}
+				return
+			}
+		}
+	}
+}
+
+// performUpdate 執行更新檢查和下載
+func performUpdate(logger *UpdateLogger) error {
+	_ = model.SetLastCheck(time.Now())
+
+	if UpdaterStatus.IsRunning() {
+		logger.Info("update already running, skipping...")
+		return ErrAlreadyStarted
+	}
+
+	UpdaterStatus.SetRunning(true)
+	defer UpdaterStatus.SetRunning(false)
+
+	if !common.GetEnvOrDefaultBool("AUTO_UPDATE", false) {
+		_ = model.SetStatus("auto update disabled")
+		return ErrUpdateDisabled
+	}
+
+	// 獲取最新版本
+	r, err := fetchLatestRelease(logger)
+	if err != nil {
+		return err
+	}
+
+	if r.TagName == common.Version+common.Build {
+		_ = model.SetStatus("latest version")
+		return ErrAlreadyLatest
+	}
+
+	// 下載並應用更新
+	logger.Info("New version available: " + r.TagName)
+	dlUrl := r.Assets[0].BrowserDownloadURL
+	hashString := strings.TrimPrefix(r.Assets[0].Digest, "sha256:")
+
+	if err := downloadAndApplyUpdate(dlUrl, hashString, logger); err != nil {
+		_ = model.SetStatus("update failed")
+		return err
+	}
+
+	_ = model.SetStatus("updated to " + r.TagName)
+	_ = model.UpdateTime()
+	_ = model.ClearUpdateError()
+
 	return nil
 }
