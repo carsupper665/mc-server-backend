@@ -37,3 +37,13 @@ servers/*
 .idea/*
 # .vscode/
 build/
+
+# Node.js
+node_modules/
+dist/
+coverage/
+
+# Misc
+.DS_Store
+.eslintcache
+*.log

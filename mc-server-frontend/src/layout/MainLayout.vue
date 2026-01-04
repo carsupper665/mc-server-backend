@@ -13,14 +13,22 @@ import {
   UserOutlined,
   LogoutOutlined,
   MenuOutlined,
-  TeamOutlined
+  TeamOutlined,
+  AppstoreOutlined
 } from '@vicons/antd';
 
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 const activeKey = computed({
-  get: () => route.name,
+  get: () => {
+    const name = route.name;
+    // ServerDetail 屬於 Servers 子頁面，應高亮 Servers
+    if (name === 'ServerDetail') {
+      return 'Servers';
+    }
+    return name;
+  },
   set: (val) => {
     // Menu handles navigation via onClick
   }
@@ -43,6 +51,15 @@ const menuOptions = [
     icon: () => h(NIcon, null, { default: () => h(HddOutlined) }),
     onClick: () => {
       router.push({ name: 'Servers' });
+      showMobileMenu.value = false;
+    }
+  },
+  {
+    label: 'Mods',
+    key: 'Mods',
+    icon: () => h(NIcon, null, { default: () => h(AppstoreOutlined) }),
+    onClick: () => {
+      router.push({ name: 'Mods' });
       showMobileMenu.value = false;
     }
   },

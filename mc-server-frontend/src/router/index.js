@@ -29,6 +29,11 @@ const routes = [
                 props: true
             },
             {
+                path: 'mods',
+                name: 'Mods',
+                component: () => import('../views/ModsView.vue'),
+            },
+            {
                 path: 'among-us',
                 name: 'AmongUs',
                 component: () => import('../views/AmongUsView.vue'),

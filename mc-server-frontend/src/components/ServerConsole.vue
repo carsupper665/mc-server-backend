@@ -167,13 +167,12 @@
 </template>
 
 <script setup>
-// ... (previous imports)
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { 
   NInput, NButton, NSpace, NText, NBadge, NInputGroup, 
   NInputGroupLabel, useMessage, NModal, NTabs, NTabPane 
 } from 'naive-ui';
-// ... (rest of code)
+import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import api from '../api';
@@ -409,8 +408,22 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
-  if (term.value) {
-    term.value.dispose();
+  // 正確清理順序：先清理 addon，再清理 terminal
+  try {
+    if (fitAddon.value) {
+      fitAddon.value.dispose();
+      fitAddon.value = null;
+    }
+  } catch (e) {
+    // 忽略 addon dispose 錯誤
+  }
+  try {
+    if (term.value) {
+      term.value.dispose();
+      term.value = null;
+    }
+  } catch (e) {
+    // 忽略 terminal dispose 錯誤
   }
 });
 

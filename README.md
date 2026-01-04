@@ -56,6 +56,12 @@ mcserver/
     - 支援世界資料備份與還原
     - **智慧備份流程**：若伺服器運行中，自動執行「停止伺服器 → 建立備份 → 重啟伺服器」的完整流程
   - 多版本支援（Minecraft 1.10+）
+- **Mod Browser（模組瀏覽器）**：
+  - 整合 [Modrinth API](https://modrinth.com/) 瀏覽和搜尋 Minecraft 模組
+  - 支援載入器過濾（Fabric / Forge / NeoForge / Quilt）
+  - 依 Minecraft 版本篩選
+  - 多種排序方式（相關性、下載數、最新等）
+  - 點擊卡片直接跳轉 Modrinth 下載頁
 - *實驗性支援 Among Us 伺服器*
 
 ### 使用者系統

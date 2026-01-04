@@ -79,7 +79,7 @@ func LoadEnv() {
 	GlobalApiRateLimitNum = GetEnvOrDefault("GLOBAL_API_RATE_LIMIT", 60)
 	GlobalApiRateLimitDuration = int64(GetEnvOrDefault("GLOBAL_API_RATE_LIMIT_DURATION", 60))
 	DCWebHookUrl = GetEnvOrDefaultString("DC_WEBHOOK_URL", "")
-	LatestFabricLoaderVersion = GetEnvOrDefaultString("LATEST_FABRIC_LOADER_VERSION", "")
+	LatestFabricLoaderVersion = GetEnvOrDefaultString("LATEST_FABRIC_LOADER_VERSION", "0.16.10")
 	LatestFabricInstallerVersion = GetEnvOrDefaultString("LATEST_FABRIC_INSTALLER_VERSION", "1.1.0")
 	MinecraftServerPath = GetEnvOrDefaultString("MINECRAFT_SERVER_PATH", "./minecraft_servers")
 
