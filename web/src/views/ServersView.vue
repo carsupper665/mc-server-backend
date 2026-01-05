@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { 
   NSpace, NButton, NCard, NDataTable, NTag, NIcon, NText,
   NModal, NForm, NFormItem, NSelect, NInput, useMessage 
@@ -7,13 +7,19 @@ import {
 import { PlusOutlined, ReloadOutlined } from '@vicons/antd';
 import api from '../api';
 import { useRouter } from 'vue-router';
+import { useVersionCacheStore } from '../store/versionCache';
+import MinecraftLoader from '../components/MinecraftLoader.vue';
 
 const message = useMessage();
 const router = useRouter();
+const versionCache = useVersionCacheStore();
+
 const servers = ref([]);
 const loading = ref(false);
 const showCreateModal = ref(false);
 const creating = ref(false);
+const isDeploying = ref(false);
+const deployMessage = ref('');
 
 const createForm = ref({
   server_type: 'Vanilla',
@@ -26,7 +32,15 @@ const serverTypes = [
   { label: 'Fabric', value: 'Fabric' }
 ];
 
-const versions = ref([]);
+// 從快取取得版本列表，根據選擇的伺服器類型動態切換
+const versions = computed(() => {
+  return versionCache.getVersionsByType(createForm.value.server_type);
+});
+
+// 當伺服器類型改變時，清除已選版本
+watch(() => createForm.value.server_type, () => {
+  createForm.value.server_ver = '';
+});
 
 const fetchServers = async () => {
   loading.value = true;
@@ -109,17 +123,36 @@ const handleCreate = async () => {
     return;
   }
 
+  // 防止重複點擊
+  if (isDeploying.value) return;
+  
   creating.value = true;
+  isDeploying.value = true;
+  deployMessage.value = '正在初始化部署環境...';
+  
   try {
-    // Both /mc-api/a/create and /user/cs seem to lead to controller.CreateServer
+    // 模擬不同階段的提示訊息
+    setTimeout(() => {
+      if (isDeploying.value) deployMessage.value = '正在下載伺服器核心，請稍候...';
+    }, 2000);
+    setTimeout(() => {
+      if (isDeploying.value) deployMessage.value = '正在配置伺服器檔案...';
+    }, 5000);
+    
     const res = await api.post('/mc-api/a/create', createForm.value);
-    message.success('伺服器建立成功');
+    message.success('伺服器建立成功！');
     showCreateModal.value = false;
+    
+    // 重置表單
+    createForm.value = { server_type: 'Vanilla', server_ver: '', display_name: '' };
+    
     fetchServers();
   } catch (err) {
     message.error('建立失敗: ' + (err.response?.data?.error || '未知錯誤'));
   } finally {
     creating.value = false;
+    isDeploying.value = false;
+    deployMessage.value = '';
   }
 };
 
@@ -176,7 +209,10 @@ import { h } from 'vue';
 
 onMounted(() => {
   fetchServers();
-  fetchVersions();
+  // 如果快取尚未載入，主動預載 (防止使用者直接進入 Servers 頁而非從 Dashboard)
+  if (!versionCache.isLoaded) {
+    versionCache.prefetchVersions();
+  }
 });
 </script>
 
@@ -215,21 +251,43 @@ onMounted(() => {
     </n-space>
 
     <n-modal v-model:show="showCreateModal" preset="card" class="create-modal" title="DEPLOY NEW INSTANCE">
-      <n-form :model="createForm" label-placement="top">
-        <n-form-item label="DISPLAY NAME">
-          <n-input v-model:value="createForm.display_name" placeholder="My Awesome Server" />
-        </n-form-item>
-        <n-form-item label="SERVER TYPE">
-          <n-select v-model:value="createForm.server_type" :options="serverTypes" />
-        </n-form-item>
-        <n-form-item label="VERSION">
-          <n-select v-model:value="createForm.server_ver" :options="versions" filterable />
-        </n-form-item>
-      </n-form>
+      <!-- 部署中 Loading 動畫 -->
+      <template v-if="isDeploying">
+        <MinecraftLoader :message="deployMessage" />
+      </template>
+      
+      <!-- 表單 -->
+      <template v-else>
+        <n-form :model="createForm" label-placement="top">
+          <n-form-item label="DISPLAY NAME">
+            <n-input v-model:value="createForm.display_name" placeholder="My Awesome Server" />
+          </n-form-item>
+          <n-form-item label="SERVER TYPE">
+            <n-select v-model:value="createForm.server_type" :options="serverTypes" />
+          </n-form-item>
+          <n-form-item label="VERSION">
+            <n-select 
+              v-model:value="createForm.server_ver" 
+              :options="versions" 
+              :loading="versionCache.isFetching"
+              filterable 
+              placeholder="選擇版本..."
+            />
+          </n-form-item>
+        </n-form>
+      </template>
+      
       <template #footer>
         <n-space justify="end">
-          <n-button @click="showCreateModal = false">CANCEL</n-button>
-          <n-button type="primary" :loading="creating" @click="handleCreate">INITIALIZE DEPLOYMENT</n-button>
+          <n-button @click="showCreateModal = false" :disabled="isDeploying">CANCEL</n-button>
+          <n-button 
+            type="primary" 
+            :loading="creating" 
+            :disabled="isDeploying"
+            @click="handleCreate"
+          >
+            INITIALIZE DEPLOYMENT
+          </n-button>
         </n-space>
       </template>
     </n-modal>

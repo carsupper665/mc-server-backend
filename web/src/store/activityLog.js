@@ -141,6 +141,11 @@ export const useActivityLogStore = defineStore('activityLog', {
      * 記錄設定變更
      */
     logPropertyChange(serverId, serverName) {
+      // 移除舊的相同紀錄 (Overwrite logic)
+      this.activities = this.activities.filter(
+        a => !(a.action === '修改伺服器設定' && a.target === serverId)
+      );
+
       this.log({
         action: '修改伺服器設定',
         target: serverId,
@@ -168,6 +173,11 @@ export const useActivityLogStore = defineStore('activityLog', {
      * 記錄備份建立
      */
     logBackup(serverId, serverName) {
+      // 移除舊的相同紀錄 (Overwrite logic)
+      this.activities = this.activities.filter(
+        a => !(a.action === '建立備份' && a.target === serverId)
+      );
+
       this.log({
         action: '建立備份',
         target: serverId,

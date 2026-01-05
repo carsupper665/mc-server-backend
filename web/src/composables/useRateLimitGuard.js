@@ -47,8 +47,14 @@ function triggerBackoff() {
 /**
  * 重置退避計數
  * 當請求成功 (非 429) 時呼叫
+ * 注意：只有在非暫停狀態時才重置，避免在退避期間被錯誤重置
  */
 function resetBackoff() {
+    // 如果當前處於暫停狀態，不重置 backoffLevel
+    // 這樣可以確保指數退避機制正常運作
+    if (isPaused.value) {
+        return;
+    }
     if (backoffLevel.value > 0) {
         console.log('[RateLimitGuard] Request successful, resetting backoff level');
         backoffLevel.value = 0;

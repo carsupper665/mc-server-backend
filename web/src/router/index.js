@@ -27,6 +27,16 @@ const routes = [
                 name: 'ServerDetail',
                 component: () => import('../views/ServerDetailView.vue'),
                 props: true
+            },
+            {
+                path: 'mods',
+                name: 'Mods',
+                component: () => import('../views/ModsView.vue'),
+            },
+            {
+                path: 'among-us',
+                name: 'AmongUs',
+                component: () => import('../views/AmongUsView.vue'),
             }
         ],
         meta: { auth: true }
@@ -40,7 +50,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
     const authStore = useAuthStore();
-    
+
     if (!authStore.user && to.meta.auth) {
         try {
             await authStore.fetchUser();

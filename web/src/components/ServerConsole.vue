@@ -1,20 +1,177 @@
+<template>
+  <div class="server-console">
+    <!-- Terminal 容器 -->
+    <div ref="terminalContainer" class="terminal-container"></div>
+
+    <!-- 狀態列與輸入框 -->
+    <div class="console-footer">
+      <div class="status-bar">
+        <n-space justify="space-between" align="center">
+          <n-badge dot :type="isConnected ? 'success' : 'error'">
+            <n-text class="status-text">
+              {{ isConnected ? 'CONNECTED' : 'DISCONNECTED' }}
+            </n-text>
+          </n-badge>
+          <n-text depth="3" class="console-label">MINECRAFT CONSOLE</n-text>
+        </n-space>
+      </div>
+
+      <div class="input-area">
+        <n-input-group>
+          <n-input-group-label class="prompt-label">/</n-input-group-label>
+          <n-input
+            v-model:value="inputCommand"
+            type="text"
+            placeholder="Type a command..."
+            :disabled="!isConnected || processing"
+            @keydown="handleKeydown"
+            class="console-input"
+          />
+          <n-button 
+            type="primary" 
+            ghost 
+            :disabled="!isConnected || processing || !inputCommand.trim()"
+            @click="sendCommand"
+          >
+            SEND
+          </n-button>
+        </n-input-group>
+      </div>
+      
+      <!-- 常用指令快捷鍵 (精簡版) -->
+      <div class="quick-commands">
+        <n-space size="small" align="center">
+          <n-button size="tiny" type="primary" secondary @click="showCommandModal = true">
+            Command Library
+          </n-button>
+          <div style="width: 1px; height: 16px; background: #444; margin: 0 4px;"></div>
+          <!-- Keep only high frequency commands -->
+          <n-button size="tiny" secondary @click="setInput('time set day')">Day</n-button>
+          <n-button size="tiny" secondary @click="setInput('weather clear')">Clear Weather</n-button>
+          <n-button size="tiny" secondary @click="setInput('list')">List</n-button>
+          <n-button size="tiny" secondary @click="setInput('stop')">Stop</n-button>
+          <n-button size="tiny" secondary @click="handleClearTerminal">Clear Console</n-button>
+        </n-space>
+      </div>
+    </div>
+
+    <!-- Command Library Modal -->
+    <n-modal
+      v-model:show="showCommandModal"
+      preset="card"
+      title="Command Library"
+      style="width: 600px; max-width: 90vw;"
+      :bordered="false"
+    >
+      <template #header-extra>
+        <n-button size="small" secondary type="primary" tag="a" href="https://www.digminecraft.com/game_commands/index.php" target="_blank">
+          🌐 Online Wiki
+        </n-button>
+      </template>
+
+      <n-tabs type="line" animated>
+        <n-tab-pane name="server" tab="Server">
+          <n-space vertical>
+            <n-text depth="3">Management</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('list')">List Players</n-button>
+              <n-button size="small" @click="setInputAndClose('stop')">Stop Server</n-button>
+              <n-button size="small" @click="setInputAndClose('save-all')">Save All</n-button>
+              <n-button size="small" @click="setInputAndClose('save-off')">Disable Auto-Save</n-button>
+              <n-button size="small" @click="setInputAndClose('save-on')">Enable Auto-Save</n-button>
+            </n-space>
+            <n-text depth="3">Whitelist</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('whitelist on')">Whitelist On</n-button>
+              <n-button size="small" @click="setInputAndClose('whitelist off')">Whitelist Off</n-button>
+              <n-button size="small" @click="setInputAndClose('whitelist list')">List Whitelist</n-button>
+              <n-button size="small" @click="setInput('whitelist add ')">Add User...</n-button>
+              <n-button size="small" @click="setInput('whitelist remove ')">Remove User...</n-button>
+            </n-space>
+          </n-space>
+        </n-tab-pane>
+        
+        <n-tab-pane name="player" tab="Player">
+          <n-space vertical>
+            <n-text depth="3">Moderation</n-text>
+            <n-space>
+              <n-button size="small" @click="setInput('kick ')">Kick...</n-button>
+              <n-button size="small" @click="setInput('ban ')">Ban...</n-button>
+              <n-button size="small" @click="setInput('pardon ')">Unban (Pardon)...</n-button>
+              <n-button size="small" @click="setInput('op ')">OP...</n-button>
+              <n-button size="small" @click="setInput('deop ')">De-OP...</n-button>
+            </n-space>
+            <n-text depth="3">Gamemode</n-text>
+            <n-space>
+              <n-button size="small" @click="setInput('gamemode survival ')">Survival...</n-button>
+              <n-button size="small" @click="setInput('gamemode creative ')">Creative...</n-button>
+              <n-button size="small" @click="setInput('gamemode spectator ')">Spectator...</n-button>
+              <n-button size="small" @click="setInput('gamemode adventure ')">Adventure...</n-button>
+            </n-space>
+            <n-text depth="3">Other</n-text>
+            <n-space>
+              <n-button size="small" @click="setInput('xp add ')">Give XP...</n-button>
+              <n-button size="small" @click="setInput('tp ')">Teleport...</n-button>
+              <n-button size="small" @click="setInput('clear ')">Clear Inventory...</n-button>
+            </n-space>
+          </n-space>
+        </n-tab-pane>
+
+        <n-tab-pane name="world" tab="World">
+          <n-space vertical>
+            <n-text depth="3">Time</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('time set day')">Day</n-button>
+              <n-button size="small" @click="setInputAndClose('time set night')">Night</n-button>
+              <n-button size="small" @click="setInputAndClose('time set noon')">Noon</n-button>
+              <n-button size="small" @click="setInputAndClose('time set midnight')">Midnight</n-button>
+              <n-button size="small" @click="setInput('time add ')">Add Time...</n-button>
+            </n-space>
+            <n-text depth="3">Weather</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('weather clear')">Clear</n-button>
+              <n-button size="small" @click="setInputAndClose('weather rain')">Rain</n-button>
+              <n-button size="small" @click="setInputAndClose('weather thunder')">Thunder</n-button>
+            </n-space>
+             <n-text depth="3">Difficulty</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('difficulty peaceful')">Peaceful</n-button>
+              <n-button size="small" @click="setInputAndClose('difficulty easy')">Easy</n-button>
+              <n-button size="small" @click="setInputAndClose('difficulty normal')">Normal</n-button>
+              <n-button size="small" @click="setInputAndClose('difficulty hard')">Hard</n-button>
+            </n-space>
+          </n-space>
+        </n-tab-pane>
+
+        <n-tab-pane name="gamerules" tab="GameRules">
+          <n-space vertical>
+            <n-text depth="3">Common Rules</n-text>
+            <n-space>
+              <n-button size="small" @click="setInputAndClose('gamerule keepInventory true')">KeepInventory: True</n-button>
+              <n-button size="small" @click="setInputAndClose('gamerule keepInventory false')">KeepInventory: False</n-button>
+              <n-button size="small" @click="setInputAndClose('gamerule doMobSpawning true')">MobSpawning: True</n-button>
+              <n-button size="small" @click="setInputAndClose('gamerule doMobSpawning false')">MobSpawning: False</n-button>
+              <n-button size="small" @click="setInputAndClose('gamerule doDaylightCycle true')">DaylightCycle: True</n-button>
+              <n-button size="small" @click="setInputAndClose('gamerule doDaylightCycle false')">DaylightCycle: False</n-button>
+            </n-space>
+             <n-text depth="3">Chat</n-text>
+            <n-space>
+               <n-button size="small" @click="setInput('say ')">Broadcast (Say)...</n-button>
+               <n-button size="small" @click="setInput('title @a title ')">Show Title...</n-button>
+            </n-space>
+          </n-space>
+        </n-tab-pane>
+      </n-tabs>
+    </n-modal>
+  </div>
+</template>
+
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
-import {
-  NSpace,
-  NButton,
-  NCard,
-  NTag,
-  NInput,
-  NText,
-  NIcon,
-  useMessage,
+import { 
+  NInput, NButton, NSpace, NText, NBadge, NInputGroup, 
+  NInputGroupLabel, useMessage, NModal, NTabs, NTabPane 
 } from 'naive-ui';
-import {
-  CodeOutlined,
-  SendOutlined,
-  ClearOutlined,
-} from '@vicons/antd';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -23,593 +180,317 @@ import api from '../api';
 const props = defineProps({
   serverId: {
     type: String,
-    required: true,
+    required: true
   },
   isRunning: {
     type: Boolean,
-    default: false,
+    default: false
   },
   macroStatus: {
-    type: Object,
-    default: null,
-  },
+    type: String,
+    default: null
+  }
 });
 
 const emit = defineEmits(['command-sent']);
-
 const message = useMessage();
 
-// 終端機相關狀態
-const terminalRef = ref(null);
-const term = ref(null); // 使用 ref 確保可被父元件正確存取 (Vue 會自動 unwrap)
-let fitAddon = null;
-let isTerminalInitialized = false;
+// Terminal 實例
+const terminalContainer = ref(null);
+const term = ref(null);
+const fitAddon = ref(null);
 
-// Resize handler (需要具名函數才能正確移除事件監聽器)
-const handleResize = () => {
-  if (fitAddon && isTerminalInitialized) {
-    try {
-      fitAddon.fit();
-    } catch (e) {
-      // 忽略 resize 時的錯誤
-    }
-  }
-};
+// 狀態
+const inputCommand = ref('');
+const isConnected = ref(false); // 這裡的連接狀態主要反映伺服器是否運行
+const processing = ref(false);
+const showCommandModal = ref(false);
 
-// 指令相關狀態
-const command = ref('');
+// 指令歷史
 const commandHistory = ref([]);
 const historyIndex = ref(-1);
-const showSuggestions = ref(false);
-const filteredCommands = ref([]);
-const selectedSuggestionIndex = ref(0);
-const suggestionsRef = ref(null); // 下拉選單容器引用
+const HISTORY_KEY = `mc_cmd_history_${props.serverId}`;
 
-const COMMAND_HISTORY_KEY = `mc_cmd_history_`;
-
-// Minecraft 常用指令列表
-const mcCommands = [
-  '/help', '/list', '/say', '/tell', '/msg', '/me', '/gamemode', '/tp',
-  '/teleport', '/give', '/clear', '/time', '/weather', '/difficulty',
-  '/seed', '/ban', '/pardon', '/kick', '/op', '/deop', '/whitelist',
-  '/stop', '/save-all', '/save-on', '/save-off', '/reload', '/setblock',
-  '/fill', '/clone', '/summon', '/kill', '/effect', '/enchant',
-  '/experience', '/xp', '/gamerule', '/worldborder', '/spawnpoint',
-  '/setworldspawn', '/scoreboard', '/team', '/title', '/bossbar',
-  '/execute', '/function', '/schedule', '/data', '/datapack',
-];
-
-// 初始化終端機
+// 初始化 Terminal
 const initTerminal = () => {
-  if (term.value) return; // 防止重複初始化
+  if (!terminalContainer.value) return; // 防呆
 
   term.value = new Terminal({
-    theme: {
-      background: '#0c0c0e',
-      foreground: '#d4d4d4',
-      cursor: '#18a058',
-    },
-    fontFamily: 'Fira Code, monospace',
-    fontSize: 13,
-    convertEol: true,
     cursorBlink: true,
-    disableStdin: true,
+    fontSize: 14,
+    fontFamily: 'Fira Code, monospace',
+    theme: {
+      background: '#1a1a20',
+      foreground: '#d4d4d4',
+      cursor: '#aeafad',
+      selectionBackground: '#264f78',
+      black: '#000000',
+      red: '#cd3131',
+      green: '#0dbc79', // Minecraft Green
+      yellow: '#e5e510',
+      blue: '#2472c8',
+      magenta: '#bc3fbc',
+      cyan: '#11a8cd',
+      white: '#e5e5e5'
+    },
+    disableStdin: true, // 只讀，輸入通過 Input 元件
+    convertEol: true,
+    rows: 20
   });
 
-  fitAddon = new FitAddon();
-  term.value.loadAddon(fitAddon);
-  term.value.open(terminalRef.value);
-  fitAddon.fit();
-  isTerminalInitialized = true; // 標記初始化完成
+  fitAddon.value = new FitAddon();
+  term.value.loadAddon(fitAddon.value);
+  
+  term.value.open(terminalContainer.value);
+  
+  // 延遲執行 fit 以確保 DOM 渲染完成
+  setTimeout(() => {
+    if (fitAddon.value) fitAddon.value.fit();
+  }, 100);
 
-  term.value.writeln('\x1b[1;32m[ SYSTEM ] Terminal initialized. Waiting for logs...\x1b[0m');
+  // 歡迎訊息
+  term.value.writeln('\x1b[1;32mWelcome to Minecraft Server Console\x1b[0m');
+  term.value.writeln('Type \x1b[1;33m/help\x1b[0m for list of commands.');
+  
+  // 監聽視窗大小變化
+  window.addEventListener('resize', handleResize);
 };
 
-// 公開方法：寫入日誌
+const handleResize = () => {
+  if (fitAddon.value && term.value && terminalContainer.value) {
+    // 檢查是否隱藏
+    if (terminalContainer.value.offsetParent !== null) {
+      fitAddon.value.fit();
+    }
+  }
+};
+
+// 載入歷史紀錄
+const loadHistory = () => {
+  try {
+    const saved = localStorage.getItem(HISTORY_KEY);
+    if (saved) {
+      commandHistory.value = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load command history', e);
+  }
+};
+
+// 儲存歷史紀錄
+const saveHistory = () => {
+  try {
+    // 只保留最近 50 筆
+    const toSave = commandHistory.value.slice(0, 50);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(toSave));
+  } catch (e) {
+    console.error('Failed to save command history', e);
+  }
+};
+
+// 導航歷史紀錄
+const navigateHistory = (direction) => {
+  if (commandHistory.value.length === 0) return;
+
+  if (direction === -1) { // Up
+    if (historyIndex.value < commandHistory.value.length - 1) {
+      historyIndex.value++;
+      inputCommand.value = commandHistory.value[historyIndex.value];
+    }
+  } else { // Down
+    if (historyIndex.value > 0) {
+      historyIndex.value--;
+      inputCommand.value = commandHistory.value[historyIndex.value];
+    } else if (historyIndex.value === 0) {
+      historyIndex.value = -1;
+      inputCommand.value = '';
+    }
+  }
+};
+
+// 寫入日誌 (由父元件呼叫)
 const writeLog = (logData) => {
-  if (term.value && logData) {
-    term.value.clear();
-    term.value.write(logData);
-  }
+  if (!term.value) return;
+  term.value.write(logData);
 };
 
-// 公開方法：清除終端機
-const clearTerminal = () => {
-  if (term.value) {
-    term.value.clear();
-    term.value.writeln('\x1b[1;33m[ SYSTEM ] Terminal cleared.\x1b[0m');
-  }
+// 設定輸入框內容 (快捷鍵用)
+const setInput = (cmd) => {
+  inputCommand.value = cmd;
+  // 自動聚焦輸入框
+  // TODO: 需要 ref 到 input 元素才能 focus，這裡簡化處理
 };
 
-// 載入與儲存歷史紀錄
-const loadCommandHistory = () => {
-  try {
-    const stored = localStorage.getItem(COMMAND_HISTORY_KEY + props.serverId);
-    if (stored) {
-      commandHistory.value = JSON.parse(stored);
-    }
-  } catch (err) {
-    console.error('Failed to load command history:', err);
-  }
+const setInputAndClose = (cmd) => {
+  setInput(cmd);
+  showCommandModal.value = false;
 };
 
-const saveCommandHistory = () => {
-  try {
-    localStorage.setItem(
-      COMMAND_HISTORY_KEY + props.serverId,
-      JSON.stringify(commandHistory.value.slice(0, 50))
-    );
-  } catch (err) {
-    console.error('Failed to save command history:', err);
-  }
-};
-
-// 指令處理
-const sendCommand = async () => {
-  if (!command.value) return;
-  try {
-    // 儲存指令歷史
-    commandHistory.value.unshift(command.value);
-    if (commandHistory.value.length > 50) {
-      commandHistory.value.pop();
-    }
-    historyIndex.value = -1;
-    saveCommandHistory();
-
-    const cmd = command.value;
-    command.value = '';
-
-    const highlightedCmd = highlightCommand(cmd);
-    term.value.writeln(`\x1b[1;36m❯\x1b[0m ${highlightedCmd}`);
-
-    await api.post(`/mc-api/a/cmd/${props.serverId}`, { command: cmd });
-
-    // 觸發父元件刷新日誌
-    emit('command-sent');
-    
-  } catch (err) {
-    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
-    term.value?.writeln(`\x1b[1;31m[ ERROR ] 指令發送失敗: ${errorMsg}\x1b[0m`);
-    if (err.response) {
-      term.value?.writeln(`\x1b[1;31m[ DEBUG ] Status: ${err.response.status}\x1b[0m`);
-    }
-    message.error(`指令發送失敗: ${errorMsg}`);
-  }
-};
-
-const highlightCommand = cmd => {
-  if (cmd.startsWith('/')) {
-    const parts = cmd.split(' ');
-    const cmdName = `\x1b[1;32m${parts[0]}\x1b[0m`;
-    const args = parts.slice(1).map(arg => {
-      if (/^\d+$/.test(arg)) return `\x1b[1;33m${arg}\x1b[0m`;
-      if (arg.startsWith('@')) return `\x1b[1;35m${arg}\x1b[0m`;
-      return `\x1b[1;37m${arg}\x1b[0m`;
-    });
-    return [cmdName, ...args].join(' ');
-  }
-  return `\x1b[0;37m${cmd}\x1b[0m`;
-};
-
-// 監聽指令輸入以過濾建議
-watch(command, newValue => {
-  if (!newValue || newValue.trim() === '') {
-    showSuggestions.value = false;
-    filteredCommands.value = [];
-    return;
-  }
-
-  if (newValue.startsWith('/')) {
-    const input = newValue.toLowerCase();
-    const matches = mcCommands.filter(cmd => cmd.startsWith(input));
-    filteredCommands.value = matches;
-    const exactMatch = matches.length === 1 && matches[0] === input;
-    showSuggestions.value = matches.length > 0 && !exactMatch;
-    selectedSuggestionIndex.value = 0;
-  } else {
-    showSuggestions.value = false;
-  }
-});
-
-const selectCommand = cmd => {
-  command.value = cmd + ' ';
-  showSuggestions.value = false;
-};
-
-const handleTabComplete = () => {
-  if (!command.value) return;
-  const input = command.value.toLowerCase();
-  const matches = mcCommands.filter(cmd => cmd.startsWith(input));
-
-  if (matches.length === 1) {
-    command.value = matches[0] + ' ';
-    showSuggestions.value = false;
-  } else if (matches.length > 1) {
-    term.value?.writeln(`\x1b[1;33m[ TAB ] ${matches.join(', ')}\x1b[0m`);
-  }
-};
-
-// 滾動到選中的建議項目
-const scrollToSelectedItem = () => {
-  nextTick(() => {
-    if (!suggestionsRef.value) return;
-    const selectedItem = suggestionsRef.value.querySelector('.suggestion-item.active');
-    if (selectedItem) {
-      selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-  });
-};
-
-const handleCommandKeydown = e => {
-  if (showSuggestions.value && filteredCommands.value.length > 0) {
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      selectedSuggestionIndex.value =
-        (selectedSuggestionIndex.value - 1 + filteredCommands.value.length) % filteredCommands.value.length;
-      scrollToSelectedItem();
-      return;
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      selectedSuggestionIndex.value =
-        (selectedSuggestionIndex.value + 1) % filteredCommands.value.length;
-      scrollToSelectedItem();
-      return;
-    } else if (e.key === 'Tab' || e.key === 'Enter') {
-      e.preventDefault();
-      if (selectedSuggestionIndex.value >= 0 && selectedSuggestionIndex.value < filteredCommands.value.length) {
-        selectCommand(filteredCommands.value[selectedSuggestionIndex.value]);
-      }
-      return;
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      showSuggestions.value = false;
-      return;
-    }
-  }
-
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    handleTabComplete();
-  } else if (e.key === 'Enter') {
+// 處理鍵盤事件 (合併 handler 以避免 Vue 警告)
+const handleKeydown = (e) => {
+  if (e.key === 'Enter') {
     e.preventDefault();
     sendCommand();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    if (historyIndex.value < commandHistory.value.length - 1) {
-      historyIndex.value++;
-      command.value = commandHistory.value[historyIndex.value];
-      setTimeout(() => {
-        const input = document.querySelector('.command-input input');
-        if (input) input.selectionStart = input.selectionEnd = command.value.length;
-      }, 0);
-    }
+    navigateHistory(-1);
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    if (historyIndex.value > 0) {
-      historyIndex.value--;
-      command.value = commandHistory.value[historyIndex.value];
-    } else if (historyIndex.value === 0) {
-      historyIndex.value = -1;
-      command.value = '';
-    }
+    navigateHistory(1);
   }
 };
 
-// 監聽 Macro 狀態變更，重新調整終端機尺寸
-watch(
-  () => props.macroStatus?.active,
-  () => {
-    nextTick(() => {
-      handleResize();
-    });
+// 清除終端機 (前端操作)
+const handleClearTerminal = () => {
+  if (term.value) {
+    term.value.clear();
+    term.value.writeln('\x1b[3mConsole cleared locally.\x1b[0m');
   }
-);
+};
+
+// 發送指令
+const sendCommand = async () => {
+  const cmd = inputCommand.value.trim();
+  if (!cmd) return;
+
+  // 處理本地指令
+  if (cmd === '/clear' || cmd === 'clear') {
+    handleClearTerminal();
+    inputCommand.value = '';
+    return;
+  }
+
+  // 加入歷史紀錄 (避免重複且移至最前)
+  const existingIndex = commandHistory.value.indexOf(cmd);
+  if (existingIndex !== -1) {
+    commandHistory.value.splice(existingIndex, 1);
+  }
+  commandHistory.value.unshift(cmd);
+  historyIndex.value = -1;
+  saveHistory();
+
+  processing.value = true;
+  // 在 Console 顯示發送的指令 (類似 echo)
+  term.value.writeln(`\r\n> \x1b[1m${cmd}\x1b[0m`);
+
+  try {
+    await api.post(`/mc-api/a/cmd/${props.serverId}`, {
+      command: cmd
+    });
+    // 成功不需特別提示，日誌會顯示結果
+    emit('command-sent', cmd);
+  } catch (err) {
+    const errorMsg = err.response?.data?.error || err.message;
+    term.value.writeln(`\x1b[1;31mError sending command: ${errorMsg}\x1b[0m`);
+    message.error('指令發送失敗');
+  } finally {
+    inputCommand.value = '';
+    processing.value = false;
+  }
+};
+
+// 監聽與生命週期
+watch(() => props.isRunning, (val) => {
+  isConnected.value = val;
+  if (!val && term.value) {
+    term.value.writeln('\x1b[3mServer stopped. Console disconnected.\x1b[0m');
+  } else if (val && term.value) {
+    term.value.writeln('\x1b[3mServer running. Console connected.\x1b[0m');
+  }
+}, { immediate: true });
 
 onMounted(() => {
-  initTerminal();
-  loadCommandHistory();
-  window.addEventListener('resize', handleResize);
+  nextTick(() => {
+    initTerminal();
+    loadHistory();
+  });
 });
 
 onBeforeUnmount(() => {
-  // 先標記終端機已關閉，防止 resize 等事件在清理過程中觸發錯誤
-  isTerminalInitialized = false;
-  
-  // 移除事件監聽器
   window.removeEventListener('resize', handleResize);
-  
-  // 安全地 dispose 終端機
-  if (term.value) {
-    try {
-      term.value.dispose();
-    } catch (e) {
-      // 忽略 dispose 時的錯誤 (addon 可能已被清理)
-      console.log('[Terminal] Cleanup completed');
+  // 正確清理順序：先清理 addon，再清理 terminal
+  try {
+    if (fitAddon.value) {
+      fitAddon.value.dispose();
+      fitAddon.value = null;
     }
-    term.value = null;
+  } catch (e) {
+    // 忽略 addon dispose 錯誤
   }
-  fitAddon = null;
+  try {
+    if (term.value) {
+      term.value.dispose();
+      term.value = null;
+    }
+  } catch (e) {
+    // 忽略 terminal dispose 錯誤
+  }
 });
 
-// Expose term for MacroPanel and methods for parent
+// 公開方法供父元件使用
 defineExpose({
-  term, // ref(Terminal)
-  writeLog,
-  clearTerminal
+  term,
+  writeLog
 });
 </script>
 
-<template>
-  <n-card class="terminal-card fade-in-up" :bordered="false">
-    <template #header>
-      <n-space align="center" justify="space-between" class="terminal-header">
-        <n-space align="center" :size="12">
-          <div class="status-indicator" :class="{ 'status-online': isRunning }">
-            <div class="status-dot"></div>
-          </div>
-          <n-icon color="#18a058" size="18"><CodeOutlined /></n-icon>
-          <n-text strong class="console-title">LIVE CONSOLE</n-text>
-          <n-tag :type="isRunning ? 'success' : 'error'" size="small" class="status-tag">
-            {{ isRunning ? 'CONNECTED' : 'OFFLINE' }}
-          </n-tag>
-        </n-space>
-        <n-button size="tiny" quaternary title="Clear Console" @click="clearTerminal">
-          <template #icon
-            ><n-icon><ClearOutlined /></n-icon
-          ></template>
-        </n-button>
-      </n-space>
-    </template>
-
-    <!-- Macro Status Bar -->
-    <div v-if="macroStatus?.active" class="macro-status-bar fade-in-up">
-      <n-icon :component="macroStatus.type === 'warning' ? 'span' : 'div'" size="16">
-        ⏳
-      </n-icon>
-      <span class="macro-message">{{ macroStatus.message }}</span>
-    </div>
-
-    <div class="terminal-wrapper" :class="{ 'terminal-glow': isRunning }">
-      <div ref="terminalRef" class="terminal-container"></div>
-    </div>
-
-    <div class="command-input-area">
-      <div class="input-wrapper">
-        <n-input
-          v-model:value="command"
-          placeholder="輸入指令... (Tab 補全, ↑↓ 歷史)"
-          :disabled="!isRunning"
-          class="command-input"
-          @keydown="handleCommandKeydown"
-        >
-          <template #prefix>
-            <n-text :depth="isRunning ? 1 : 3" class="prompt-symbol">❯</n-text>
-          </template>
-        </n-input>
-        <!-- 指令建議下拉選單 -->
-        <div
-          v-if="showSuggestions && filteredCommands.length > 0"
-          ref="suggestionsRef"
-          class="suggestions-dropdown"
-        >
-          <div
-            v-for="(cmd, index) in filteredCommands"
-            :key="cmd"
-            class="suggestion-item"
-            :class="{ active: index === selectedSuggestionIndex }"
-            @click="selectCommand(cmd)"
-            @mouseenter="selectedSuggestionIndex = index"
-          >
-            <span class="cmd-name">{{ cmd }}</span>
-          </div>
-        </div>
-      </div>
-      <n-button
-        type="primary"
-        :disabled="!isRunning || !command"
-        class="send-btn"
-        @click="sendCommand"
-      >
-        <template #icon
-          ><n-icon><SendOutlined /></n-icon
-        ></template>
-      </n-button>
-    </div>
-  </n-card>
-</template>
-
 <style scoped>
-.terminal-card {
-  background-color: #1a1a20 !important;
-  border: 1px solid #333 !important;
+.server-console {
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+  background: #1a1a20;
+  border: 1px solid #333;
+  border-radius: 6px;
   overflow: hidden;
 }
 
-.terminal-header {
-  width: 100%;
-}
-
-.console-title {
-  font-family: 'Fira Code', monospace;
-  letter-spacing: 1px;
-}
-
-.status-tag {
-  font-family: 'Fira Code', monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-
-/* 狀態指示燈 */
-.status-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-color: #444;
-  position: relative;
-}
-
-.status-indicator .status-dot {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background-color: #ef4444;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
-}
-
-.status-indicator.status-online .status-dot {
-  background-color: #18a058;
-  box-shadow: 0 0 8px rgba(24, 160, 88, 0.6);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(0.9);
-  }
-}
-
-.terminal-wrapper {
-  background-color: #0c0c0e;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 24px;
-  border: 1px solid #222;
-  transition: all 0.3s ease;
-  position: relative;
-}
-
-.terminal-wrapper.terminal-glow {
-  border-color: rgba(24, 160, 88, 0.3);
-  box-shadow:
-    0 0 20px rgba(24, 160, 88, 0.1),
-    inset 0 0 30px rgba(24, 160, 88, 0.02);
-}
-
 .terminal-container {
-  height: 450px;
-}
-
-/* 命令輸入區 */
-.command-input-area {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.command-input {
   flex: 1;
+  padding: 8px;
+  background: #000;
+  overflow: hidden; 
+  /* xterm container should manage scroll internally */
 }
 
-.command-input :deep(.n-input) {
-  background-color: rgba(0, 0, 0, 0.4);
-  border-radius: 4px;
-  font-family: 'Fira Code', monospace;
+.console-footer {
+  padding: 12px;
+  background: #25252b;
+  border-top: 1px solid #333;
 }
 
-.command-input :deep(.n-input__input-el) {
-  font-family: 'Fira Code', monospace;
-}
-
-.prompt-symbol {
-  font-family: 'Fira Code', monospace;
-  font-weight: bold;
-  margin-right: 4px;
-}
-
-/* 輸入框包裝器 */
-.input-wrapper {
-  flex: 1;
-  position: relative;
-}
-
-/* 指令建議下拉選單 */
-.suggestions-dropdown {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  background: #1a1a20;
-  border: 1px solid #333;
-  border-radius: 4px;
-  margin-bottom: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 100;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.suggestion-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  font-family: 'Fira Code', monospace;
-  font-size: 13px;
-  color: #d4d4d4;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  transition: all 0.15s ease;
-}
-
-.suggestion-item:last-child {
-  border-bottom: none;
-}
-
-.suggestion-item:hover,
-.suggestion-item.active {
-  background: rgba(24, 160, 88, 0.15);
-  color: #18a058;
-}
-
-.suggestion-item .cmd-name {
-  color: #18a058;
-  font-weight: 500;
-}
-
-.send-btn {
-  padding: 0 16px;
-}
-
-.macro-status-bar {
-  background: rgba(234, 179, 8, 0.1);
-  border: 1px solid rgba(234, 179, 8, 0.2);
-  color: #eab308;
-  padding: 8px 12px;
-  border-radius: 4px;
+.status-bar {
   margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+}
+
+.status-text {
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 4px;
+}
+
+.console-label {
   font-family: 'Fira Code', monospace;
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
 }
 
-.macro-status-bar .macro-message {
-  font-weight: 500;
+.input-area {
+  margin-bottom: 8px;
 }
 
-@media (max-width: 768px) {
-  .terminal-container {
-    height: 250px;
-    font-size: 11px !important;
-  }
-  
-  .command-input-area {
-    flex-direction: column;
-    gap: 8px;
-  }
+.prompt-label {
+  background: #333;
+  color: #fff;
+  border: none;
+  font-family: 'Fira Code', monospace;
+}
 
-  .input-wrapper {
-    width: 100%;
-  }
+.console-input {
+  font-family: 'Fira Code', monospace;
+}
 
-  .send-btn {
-    width: 100%;
-    padding: 8px 16px;
-  }
+.quick-commands {
+  padding-top: 4px;
 }
 </style>

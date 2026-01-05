@@ -88,13 +88,18 @@ export const useVersionCacheStore = defineStore('versionCache', {
           console.warn('[VersionCache] Vanilla 版本載入失敗:', vanillaRes.reason);
         }
 
-        // 處理 Fabric 版本
+        // 處理 Fabric 版本 (後端回傳的是陣列格式)
         if (fabricRes.status === 'fulfilled') {
           let data = fabricRes.value;
           if (data.versions) data = data.versions;
           if (data.data) data = data.data;
 
-          if (data && typeof data === 'object') {
+          // Fabric API 回傳陣列格式 ['1.21', '1.20.6', ...]
+          if (Array.isArray(data)) {
+            this.fabricVersions = data.map(v => ({ label: v, value: v }));
+            console.log(`[VersionCache] Fabric 版本載入完成: ${data.length} 個`);
+          } else if (data && typeof data === 'object') {
+            // 備用：如果是物件格式
             const keys = Object.keys(data).filter(k => k.match(/^[\d\w.-]+$/));
             this.fabricVersions = keys.map(v => ({ label: v, value: v }));
             console.log(`[VersionCache] Fabric 版本載入完成: ${keys.length} 個`);
