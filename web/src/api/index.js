@@ -3,6 +3,8 @@ import { createDiscreteApi } from 'naive-ui';
 import { sanitizeErrorMessage } from '../utils/errorMapping';
 import { triggerBackoff, resetBackoff } from '../composables/useRateLimitGuard';
 
+const BASE_API_URL = import.meta.env.VITE_BASE_API_URL || '';
+
 // 建立獨立的 message API (可在非 Vue 元件中使用)
 const { message } = createDiscreteApi(['message'], {
     configProviderProps: {
