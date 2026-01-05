@@ -113,21 +113,9 @@ const fetchLogs = async () => {
   try {
     const res = await api.get(`/server-api/a/log/${props.id}`);
     // API interceptor 已返回 response.data
-<<<<<<< HEAD
     const logData = res.logs
     if (logData && typeof logData === 'string' && consoleRef.value) {
       consoleRef.value.term?.value?.clear?.();
-=======
-    const logData =
-      typeof res === 'string'
-        ? res
-        : typeof res === 'object' && res
-          ? res.logs || res.log || res.data || ''
-          : '';
-
-    if (logData && typeof logData === 'string' && consoleRef.value) {
-      consoleRef.value.term?.value?.clear?.(); // replace console content
->>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
       consoleRef.value.writeLog(logData);
     }
   } catch (err) {

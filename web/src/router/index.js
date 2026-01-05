@@ -29,14 +29,11 @@ const routes = [
                 props: true
             },
             {
-<<<<<<< HEAD
                 path: 'mods',
                 name: 'Mods',
                 component: () => import('../views/ModsView.vue'),
             },
             {
-=======
->>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
                 path: 'among-us',
                 name: 'AmongUs',
                 component: () => import('../views/AmongUsView.vue'),

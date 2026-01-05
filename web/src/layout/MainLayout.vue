@@ -13,12 +13,8 @@ import {
   UserOutlined,
   LogoutOutlined,
   MenuOutlined,
-<<<<<<< HEAD
   TeamOutlined,
   AppstoreOutlined
-=======
-  TeamOutlined
->>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
 } from '@vicons/antd';
 
 const router = useRouter();
@@ -59,7 +55,6 @@ const menuOptions = [
     }
   },
   {
-<<<<<<< HEAD
     label: 'Mods',
     key: 'Mods',
     icon: () => h(NIcon, null, { default: () => h(AppstoreOutlined) }),
@@ -69,8 +64,6 @@ const menuOptions = [
     }
   },
   {
-=======
->>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
     label: 'Among Us',
     key: 'AmongUs',
     icon: () => h(NIcon, null, { default: () => h(TeamOutlined) }),
