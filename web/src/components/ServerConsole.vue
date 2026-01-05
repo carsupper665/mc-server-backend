@@ -167,11 +167,16 @@
 </template>
 
 <script setup>
+// ... (previous imports)
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { 
   NInput, NButton, NSpace, NText, NBadge, NInputGroup, 
   NInputGroupLabel, useMessage, NModal, NTabs, NTabPane 
 } from 'naive-ui';
+<<<<<<< HEAD
+=======
+// ... (rest of code)
+>>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
@@ -408,6 +413,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+<<<<<<< HEAD
   // 正確清理順序：先清理 addon，再清理 terminal
   try {
     if (fitAddon.value) {
@@ -424,6 +430,10 @@ onBeforeUnmount(() => {
     }
   } catch (e) {
     // 忽略 terminal dispose 錯誤
+=======
+  if (term.value) {
+    term.value.dispose();
+>>>>>>> 6b16455ec9382b83ef1210bfcc64bdb1ab160a2b
   }
 });
 
