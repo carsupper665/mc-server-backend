@@ -90,6 +90,10 @@ func LoadEnv() {
 	LoadVanillaServerUrls()
 }
 
+func SetLatestFabricLoader() {
+
+}
+
 func SetUpSMTP() {
 	SMTPServer = GetEnvOrDefaultString("SMTP_SERVER", "")
 	SMTPPort = GetEnvOrDefault("SMTP_PORT", 587)

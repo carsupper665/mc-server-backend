@@ -10,6 +10,11 @@ import (
 	"path/filepath"
 )
 
+const (
+	Fabric  = "Fabric"
+	Vanilla = "Vanilla"
+)
+
 type CreateServerRequest struct {
 	ServerType      string `json:"server_type"`
 	ServerVer       string `json:"server_ver"`
@@ -74,6 +79,10 @@ func (s *ServerService) RollBackSave(sid, file, workDir string) error {
 	return s.mgr.ServerSaveRollBack(sid, file, workDir)
 }
 
+func (s *ServerService) DelServer(sid, workDir string) error {
+	return s.mgr.DeleteServer(sid, workDir)
+}
+
 func (s *ServerService) ListBackups(sid, workDir string) ([]string, error) {
 	return s.mgr.ServerSaveList(sid, workDir)
 }
@@ -82,22 +91,18 @@ func CreateServer(ownerID string, serverType string, serverVer string, fabricLoa
 	var idPerFix, fURL, vURL string
 	var err error
 
-	if fabricLoader == "" {
-		fabricLoader = common.LatestFabricLoaderVersion // 預設值
-	}
-
 	if fabricInstaller == "" {
 		fabricInstaller = common.LatestFabricInstallerVersion
 	}
 
 	switch serverType {
-	case "Fabric":
+	case Fabric:
 		idPerFix = "mcsfv-"
 		fURL = fmt.Sprintf(
 			"https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
 			serverVer, fabricLoader, fabricInstaller,
 		)
-	case "Vanilla":
+	case Vanilla:
 		if idPerFix == "" {
 			idPerFix = "mcsvv-"
 		}

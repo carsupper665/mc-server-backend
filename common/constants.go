@@ -1,18 +1,9 @@
 // ./common/constants.go
 package common
 
-// import (
-// 	"os"
-// 	"strconv"
-// 	"sync"
-// 	"time"
-
-// 	"github.com/google/uuid"
-// )
-
 const (
-	Version                 = "v0.1.0"
-	Build                   = "-beta-1.3c21"
+	Version                 = "v1.1.0"
+	Build                   = "-beta-1.0c27"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id

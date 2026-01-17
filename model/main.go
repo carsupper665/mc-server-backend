@@ -1,4 +1,3 @@
-// model/main.go
 package model
 
 import (
@@ -88,7 +87,16 @@ func migrateDB() error {
 		&LoginAttempt{},
 		&Book{},
 		&UpdateLog{},
+		&ServerMod{},
+		&Mod{},
+		&ModVersion{},
 	)
+
+	// 建立複合索引
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_server_mods_status ON server_mods(status)")
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_server_mods_has_update ON server_mods(has_update)")
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_mods_downloads ON mods(downloads DESC)")
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_mod_versions_mod_id_published ON mod_versions(mod_id, published DESC)")
 
 	if err != nil {
 		return err

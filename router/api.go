@@ -21,6 +21,7 @@ func SetAPIRouter(router *gin.Engine) {
 	svc := service.NewServerService(mgr)
 	c := controller.NewServerController(svc)
 	router.Use(middleware.CORS())
+	// old api delete later
 	mcapi := router.Group("/mc-api")
 	mcapi.Use(gzip.Gzip(gzip.DefaultCompression),
 		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
@@ -62,19 +63,59 @@ func SetAPIRouter(router *gin.Engine) {
 		middleware.DebugMode(),
 	)
 	{
-		testApi.POST("/mc-server/create", controller.CreateServer)
-		testApi.POST("/status/:server_id", c.GetStatus)
-		testApi.POST("/startmyserver/:server_id", c.Start)
-		testApi.POST("/stopmyserver/:server_id", c.Stop)
-		testApi.POST("/:server_id/property", c.GetServerProperties)
-		testApi.POST("/:server_id/Upproperty", c.UploadProperty)
-		testApi.GET("/:server_id/bc", c.Backup)
+
 	}
 
 	client := mcapi.Group("/client")
 	client.Use(middleware.ClientAppAuth())
 	{
 		client.GET("/getUserInfo", controller.GetUserInfo)
+	}
+
+	// New Api Router
+	api := router.Group("/api")
+	api.Use(gzip.Gzip(gzip.DefaultCompression),
+		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
+		middleware.GloabalIPFilter(),
+		middleware.UserAgentFilter(),
+	)
+	v1 := api.Group("/v1")
+	apiPublic := v1.Group("/public")
+	{
+		apiPublic.GET("/finfo", controller.GetAllFabricVersions)
+		apiPublic.GET("/vinfo", controller.GetAllVanillaVersions)
+	}
+	serverApi := v1.Group("/server")
+	serverApi.Use(middleware.ValidateJWT())
+	{
+		serverApi.POST("/create", controller.CreateServer)
+		serverApi.DELETE("/del/:server_id", c.DeleteServerById)
+
+		serverApi.GET("/status/:server_id", c.GetStatus)
+		serverApi.GET("/stop/:server_id", c.Stop)
+		serverApi.GET("/start/:server_id", c.Start)
+
+		serverApi.GET("/list/backup/:server_id", c.ListServerBackup)
+		serverApi.GET("/backup/:server_id", c.Backup)
+		serverApi.POST("/recover", c.SaveRollBack)
+
+		serverApi.GET("/property/:server_id", c.GetServerProperties)
+		serverApi.POST("/property/upload/:server_id", c.UploadProperty)
+
+		serverApi.POST("/command/:server_id", c.SendCommand)
+		serverApi.GET("/usage/:server_id", c.ServerUsage)
+		serverApi.GET("/log/:server_id", c.GetServerLog)
+
+	}
+	serverMod := serverApi.Group("/mod")
+	// New Features TODO list
+	{
+		serverMod.POST("/add/:server_id", c.AddMod)
+		serverMod.POST("/remove/:server_id")
+		serverMod.POST("/update/:server_id")
+		serverMod.POST("/toggle/:server_id") // Enable or disable a mod on the server
+		serverMod.GET("/list/:server_id")    // Query the list of mods installed on the server
+
 	}
 
 }

@@ -4,11 +4,10 @@ package controller
 
 import (
 	"errors"
-	"fmt"
 	"go-backend/common"
 	"go-backend/model"
 	"go-backend/service"
-	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +23,17 @@ func CreateServer(c *gin.Context) {
 
 	_, uid_str, uid_uint, err := getPayloadAndId(c)
 
+	if strings.TrimSpace(req.FabricLoader) == "" || strings.TrimSpace(req.FabricInstaller) == "" {
+		loader, installer, fetchErr := common.FetchLatestFabricLoaderAndInstaller(req.ServerVer)
+		if fetchErr != nil {
+			common.LogError(c.Request.Context(), "Fetch Fabric Loader Version error: "+fetchErr.Error())
+			c.JSON(500, gin.H{"error": "Failed to fetch latest fabric loader version"})
+			return
+		}
+		req.FabricLoader = loader
+		req.FabricInstaller = installer
+	}
+
 	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
 		common.LogError(c.Request.Context(), "CreateMinecraftServer error: "+err.Error())
@@ -31,7 +41,11 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, common.MinecraftServerPath+"/"+serverID)
+	sysPath := common.MinecraftServerPath + "/" + serverID
+
+	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, req.ServerVer,
+		req.ServerType, req.FabricLoader, sysPath)
+
 	if modelErr != nil {
 		common.LogError(c.Request.Context(), "AddServerToUser error: "+modelErr.Error())
 		service.ErrorFileClear(common.MinecraftServerPath + "/" + serverID)
@@ -74,49 +88,12 @@ func MyServers(c *gin.Context) {
 	c.JSON(200, servers)
 }
 
-func DeleteServerById(c *gin.Context) {
-	serverID := c.Param("server_id")
-	if serverID == "" {
-		c.JSON(400, gin.H{"error": "Server ID is required"})
-		return
-	}
+func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
+	payload := c.MustGet("payload").(map[string]any)
+	rawUID := c.MustGet("stringId").(string)
+	uid := c.MustGet("uintId").(uint)
 
-	_, _, id_uint, err := getPayloadAndId(c)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Internal Server Error: " + err.Error()})
-		return
-	}
-
-	err = model.RemoveServerByServerID(id_uint, serverID)
-	if err != nil {
-		common.LogDebug(c.Request.Context(), "RemoveServerByServerID error: "+err.Error())
-		c.JSON(500, gin.H{"error": "Failed to delete server"})
-		return
-	}
-
-	c.JSON(200, gin.H{"message": "Server deleted successfully"})
-}
-
-func getPayloadAndId(c *gin.Context) (map[string]interface{}, string, uint, error) {
-	token, err := c.Cookie(common.JwtCookieName)
-	if err != nil {
-		return nil, "", 0, fmt.Errorf("failed to get JWT cookie: %w", err)
-	}
-	payload, err := common.GetJWTPayload(token)
-	if err != nil {
-		common.LogDebug(c.Request.Context(), "JWT error: "+err.Error())
-		clearCookies(c)
-		return nil, "", 0, fmt.Errorf("invalid token: %w", err)
-	}
-
-	rawUID, _ := payload["user_id"]
-	uid, parseErr := strconv.ParseUint(rawUID.(string), 10, 32)
-
-	if parseErr != nil {
-		common.LogDebug(c.Request.Context(), "Parsing user id error: "+parseErr.Error())
-		return nil, "", 0, fmt.Errorf("failed to parse user ID: %w", parseErr)
-	}
-	return payload, rawUID.(string), uint(uid), nil
+	return payload, rawUID, uid, nil
 }
 
 // --------------------Server Controller--------------------
@@ -491,16 +468,98 @@ func (sc *ServerController) UploadProperty(c *gin.Context) {
 
 	serverInfo, err := model.GetServerByID(uintID, sid)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Upload Error: " + err.Error()})
+		c.JSON(500, gin.H{"error": "Upload Error"})
 		return
 	}
 
 	err = service.ReplaceProperty(serverInfo.SystemPath, req.Texts)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Upload Error: " + err.Error()})
+		c.JSON(500, gin.H{"error": "Upload Error"})
 		return
 	}
 
 	c.JSON(200, gin.H{"message": "Uploaded."})
+
+}
+
+func (sc *ServerController) DeleteServerById(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, id_uint, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Internal Server Error: " + err.Error()})
+		return
+	}
+
+	err = model.IsOwner(id_uint, serverID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "You are not the owner of this server"})
+		return
+	}
+
+	serverData, err := model.GetServerByID(id_uint, serverID)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "GetServerByID error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+
+	err = sc.svc.DelServer(serverID, serverData.SystemPath)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "DelServer error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to delete server files"})
+		return
+	}
+
+	err = model.RemoveServerByServerID(id_uint, serverID)
+	if err != nil {
+		common.LogDebug(c.Request.Context(), "RemoveServerByServerID error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to delete server"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "Server deleted successfully"})
+}
+
+// Mods Manager
+
+type AddModRequest struct {
+	ModID      string `json:"mod_id" binding:"required"`
+	VersionID  string `json:"version_id"`
+	AutoUpdate bool   `json:"auto_update"` // 是否自動更新
+}
+
+func (sc *ServerController) AddMod(c *gin.Context) {
+	var req AddModRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Invalid request"})
+		return
+	}
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if err := model.IsOwner(userId, sid); err != nil {
+		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+
+	serverData, err := model.GetServerByID(userId, sid)
+
+	if err := service.AddMod(sid, serverData.SystemPath, serverData.ModLoader, serverData.MCVersion, req.ModID, req.VersionID, req.AutoUpdate); err != nil {
+		common.LogError(c.Request.Context(), "install Mod error: "+err.Error())
+		c.JSON(500, gin.H{"error": "Failed to add mod."})
+		return
+	}
 
 }

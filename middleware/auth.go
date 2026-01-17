@@ -3,9 +3,11 @@
 package middleware
 
 import (
+	"fmt"
 	"go-backend/common"
 	"go-backend/model"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,8 +121,24 @@ func ValidateJWT() gin.HandlerFunc {
 		Valid := common.ValidateUser(token, c.ClientIP())
 		if !Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.SetCookie(common.JwtCookieName, "", -1, "/", "", false, true)
 			return
 		}
+
+		payload, err := common.GetJWTPayload(token)
+
+		rawUID, _ := payload["user_id"]
+		uid, parseErr := strconv.ParseUint(rawUID.(string), 10, 32)
+		if parseErr != nil {
+			common.LogError(c.Request.Context(), fmt.Sprintf("Parse user_id error: %v", parseErr))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			// clear cookies
+			c.SetCookie(common.JwtCookieName, "", -1, "/", "", false, true)
+			return
+		}
+		c.Set("uintId", uint(uid))
+		c.Set("stringId", rawUID)
+		c.Set("payload", payload)
 
 		c.Next()
 	}

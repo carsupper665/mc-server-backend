@@ -529,3 +529,31 @@ func (sm *ServerManager) cleanupExpired() {
 		sm.mu.Unlock()
 	}
 }
+
+func (sm *ServerManager) cleanup(sid string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	srv, exists := sm.servers[sid]
+	if exists {
+		sm.releasePortWithOutLock(srv.port)
+		delete(sm.servers, sid)
+		common.SysLog(fmt.Sprintf("Server: %s del, port: %s", sid, srv.port))
+	}
+}
+
+func (sm *ServerManager) DeleteServer(sid, dir string) error {
+	sm.mu.RLock()
+	srv, exists := sm.servers[sid]
+	sm.mu.RUnlock()
+
+	if exists {
+		if srv.Status() == "running" {
+			return ErrServerRunning
+		}
+		sm.cleanup(sid)
+	}
+
+	// 刪除dir底下的檔案
+	path := dir
+	return os.RemoveAll(path)
+}
