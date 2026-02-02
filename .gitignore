@@ -37,3 +37,4 @@ servers/*
 build/
 AGENTS.md
 ./test/cookies.json
+cookies.json
