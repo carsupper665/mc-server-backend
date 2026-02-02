@@ -159,7 +159,6 @@ func getFabricInstaller() ([]string, error) {
 
 	stableVer := make([]string, len(installer))
 	for i, v := range installer {
-		fmt.Println(v.Version, v.Stable)
 		if v.Stable {
 			stableVer[i] = v.Version
 		}

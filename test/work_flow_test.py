@@ -98,6 +98,23 @@ class HttpTester:
         response = self.session.post(url, json=post_data)
         return self._res_handler(response)
 
+    def toggle_mod(self, server_id: str, mod_id: str):
+        if not self.is_sess_exist:
+            print("please login")
+            return
+        url = f"{BASE_URL}/api/v1/server/mod/toggle/{server_id}"
+        params = {"mod_id": mod_id}
+        response = self.session.get(url, params=params)
+        return self._res_handler(response)
+
+    def list_mods(self, server_id: str):
+        if not self.is_sess_exist:
+            print("please login")
+            return None, None
+        url = f"{BASE_URL}/api/v1/server/mod/list/{server_id}"
+        response = self.session.get(url,)
+        return self._res_handler(response)
+
     def load_cookies(self, file_path: str = "cookies.json"):
         with open(file_path, "r", encoding="utf-8") as f:
             cookies_dict = json.load(f)
@@ -137,7 +154,11 @@ def login_again(username: str, password: str):
 if __name__ == "__main__":
     term = HttpTester()
     term.load_cookies("cookies.json")
-    term.create_server("Fabric", "1.20.1", "1.20.1 Test")
+    term.list_mods(server_id="mcsfv-fabric-0269-OID-1")
+    term.add_mod(server_id="mcsfv-fabric-0269-OID-1", mod_id="9s6osm5g")
+    term.list_mods(server_id="mcsfv-fabric-0269-OID-1")
+    # term.toggle_mod(server_id="mcsfv-fabric-0269-OID-1", mod_id="AANobbMI")
+    # term.create_server("Fabric", "1.20.1", "1.20.1 Test")
 
     # term.add_mod(server_id='mcsfv-fabric-0269-OID-1', mod_id='AANobbMI') # add-mod-test
     # term.add_mod(server_id='mcsfv-fabric-6308-OID-1', mod_id='AANobbMI')

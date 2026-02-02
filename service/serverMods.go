@@ -70,12 +70,14 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 	}
 
 	// download mod to work dir
-	if err := modDownload(*file, workDir); err != nil {
+	modPath, err := modDownload(*file, workDir)
+	if err != nil {
 		return err
 	}
 
 	// write to DB
 	if err := model.AddModToServer(sid, modID, modInf.ID, file.Filename, autoUpdate); err != nil {
+		_ = os.Remove(modPath)
 		return err
 	}
 
@@ -171,11 +173,11 @@ func selectModFile(files []ModrinthFile) (*ModrinthFile, error) {
 	return &files[0], nil
 }
 
-func modDownload(file ModrinthFile, workDir string) error {
+func modDownload(file ModrinthFile, workDir string) (string, error) {
 
 	modsDir := filepath.Join(workDir, "mods")
 	if err := os.MkdirAll(modsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create mods directory: %w", err)
+		return "", fmt.Errorf("failed to create mods directory: %w", err)
 	}
 
 	// download
@@ -186,21 +188,38 @@ func modDownload(file ModrinthFile, workDir string) error {
 	)
 	if resp, err = http.Get(dlUrl); err != nil {
 		common.SysError(fmt.Sprintf("Error while mod download: %s", err.Error()))
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		common.SysError(fmt.Sprintf("Error while mod download with status: %d", resp.StatusCode))
-		return NetWorkErr
+		return "", NetWorkErr
 	}
 
-	output, outErr := os.Create(filepath.Join(modsDir, file.Filename))
-	if outErr != nil {
-		common.SysError(fmt.Sprintf("Error while outputing mod: %s", outErr.Error()))
-		return outErr
+	tmpFile, err := os.CreateTemp(modsDir, file.Filename+".tmp-*")
+	if err != nil {
+		common.SysError(fmt.Sprintf("Error while creating temp mod file: %s", err.Error()))
+		return "", err
 	}
-	defer output.Close()
-	_, err = io.Copy(output, resp.Body)
-	return nil
+	tmpName := tmpFile.Name()
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpName)
+		return "", err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return "", err
+	}
+
+	finalPath := filepath.Join(modsDir, file.Filename)
+	if err := os.Rename(tmpName, finalPath); err != nil {
+		_ = os.Remove(tmpName)
+		return "", err
+	}
+
+	return finalPath, nil
 }

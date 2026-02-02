@@ -125,6 +125,21 @@ func GetServerMod(serverID, modID string) (*ServerMod, error) {
 	return &serverMod, nil
 }
 
+func ListMods(serverID string) ([]ServerMod, error) {
+	var serverMods []ServerMod
+
+	err := DB.
+		Where("server_id = ?", serverID).
+		Preload("Mod").Preload("Version").
+		Find(&serverMods).
+		Error
+	if err != nil {
+		return nil, err
+	}
+
+	return serverMods, nil
+}
+
 func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		exists, err := ModExists(sid, modID)
@@ -138,7 +153,7 @@ func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) err
 				ModID:       modID,
 				VersionID:   versionID,
 				Filename:    filename,
-				Status:      "enable",
+				Status:      "installed",
 				Enabled:     true,
 				AutoUpdate:  autoUpdate,
 				InstalledAt: now,
@@ -168,13 +183,32 @@ func ModExists(sid, modID string) (bool, error) {
 	return n > 0, err
 }
 
-func ChangeModStatus(sid, modID, status string) error {
-	return DB.Model(&ServerMod{}).Where("server_id = ? AND mod_id = ?", sid, modID).
+func UpdateModState(sid, modID, filename, status string, enabled bool) error {
+	return DB.Model(&ServerMod{}).
+		Where("server_id = ? AND mod_id = ?", sid, modID).
 		Updates(map[string]any{
-			"status": status,
+			"filename":      filename,
+			"status":        status,
+			"enabled":       enabled,
+			"error_message": "",
 		}).Error
 }
 
+func ModIsEnable(sid, modID string) (bool, error) {
+	var sm ServerMod
+
+	err := DB.
+		Model(&ServerMod{}).
+		Select("enabled"). // 只撈需要的欄位
+		Where("server_id = ? AND mod_id = ?", sid, modID).
+		Take(&sm). // 找不到會回 gorm.ErrRecordNotFound
+		Error
+
+	if err != nil {
+		return false, err
+	}
+	return sm.Enabled, nil
+}
 func ModFileName(sid, modID string) string {
 	var sm ServerMod
 

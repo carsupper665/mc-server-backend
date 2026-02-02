@@ -7,6 +7,7 @@ import (
 	"go-backend/common"
 	"go-backend/model"
 	"go-backend/service"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -570,13 +571,13 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "mod installed Successfully"})
 }
 
-func (sc *ServerController) DisableMod(c *gin.Context) {
+func (sc *ServerController) ToggleMod(c *gin.Context) {
 	serverID := c.Param("server_id")
 	if serverID == "" {
 		c.JSON(400, gin.H{"error": "Invalid server ID"})
 		return
 	}
-	modID := c.Param("mod_id")
+	modID := c.Query("mod_id")
 	if modID == "" {
 		c.JSON(400, gin.H{"error": "Invalid request"})
 		return
@@ -587,25 +588,78 @@ func (sc *ServerController) DisableMod(c *gin.Context) {
 		return
 	}
 	err = model.IsOwner(userId, serverID)
-	// DB change
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+
+	serverData, err := model.GetServerByID(userId, serverID)
+	if err != nil {
+		logger.Errorf("Disable mod error, GetServerByID: %v, ReqId: %s", err, reqid(c))
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+
+	rid := reqid(c) // for log
+
 	// DB get mod file
 	modFile := model.ModFileName(serverID, modID)
 	if modFile == "" {
 		c.JSON(500, gin.H{"error": "Mod File Not Found or error"})
 		return
 	}
-	// server modify
+	modPath := filepath.Join(serverData.SystemPath, "mods", modFile)
+	var f func(sid, mid, mp string) error
 
-	if err := sc.svc.DisableMod(serverID, modFile); err != nil {
-		rid := reqid(c)
+	if ok, err := model.ModIsEnable(serverID, modID); err != nil {
+		logger.Errorf("Disable mod error, \nat model\a at ModIsEnable \n Error: %v, ReqId: %s", err, rid)
+		c.JSON(500, gin.H{"error": "Failed to toggle mod."})
+		return
+	} else if !ok {
+		f = sc.svc.EnableMod
+	} else {
+		f = sc.svc.DisableMod
+	}
+
+	if err := f(serverID, modID, modPath); err != nil {
 		logger.Errorf("Disable mod error: %v, ReqId: %s", err, rid)
 		c.JSON(500, gin.H{"error": "Failed to disable mod."})
 		return
 	}
 
-	if err := model.ChangeModStatus(serverID, modID, "disable"); err != nil {
-		logger.Errorf("Disable mod error: %v, ReqId: %s", err, reqid)
-		c.JSON(500, gin.H{"error": "DB ERR Failed to disable mod."})
+	c.JSON(200, gin.H{"message": "mod toggle successfully"})
+}
+
+func (sc *ServerController) ListMod(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Invalid server ID"})
+		return
 	}
-	c.JSON(200, gin.H{"message": "mod disabled successfully"})
+
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if err := model.IsOwner(userId, serverID); err != nil {
+		logger.Errorf("List mod error, \n at model IsOwner %v", err)
+		c.JSON(400, gin.H{"error": "Not the owner of the server, or server does not exist"})
+		return
+	}
+	var modData []model.ServerMod
+	modData, err = model.ListMods(serverID)
+	if err != nil {
+		logger.Errorf("List mod error, \n at model ListMods %v", err)
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+
+	type ml struct {
+		Name     string `json:"name"`
+		FileName string `json:"file_name"`
+	}
+
+	c.JSON(200, gin.H{"message": modData})
 }
