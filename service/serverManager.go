@@ -575,6 +575,8 @@ func (sm *ServerManager) DisableMod(sid, modPath string) error {
 		return ErrServerRunning
 	}
 	// rename file to disable
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	ext := strings.ToLower(filepath.Ext(modPath)) // ".disable" vor ".jar"
 	if ext == ".disable" {
 		return ErrAlreadyDisabled // already disable
@@ -605,9 +607,15 @@ func (sm *ServerManager) EnableMod(sid, modPath string) error {
 
 }
 
-//func (sm *ServerManager) DeleteMod(sid, modPath string) error {
-//	if running := sm.isRunning(sid); running {
-//		return ErrServerRunning
-//	}
-//
-//}
+func (sm *ServerManager) DeleteMod(sid, modPath string) error {
+	if running := sm.isRunning(sid); running {
+		return ErrServerRunning
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if err := os.Remove(modPath); err != nil {
+		return err
+	}
+	return nil
+}

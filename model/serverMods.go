@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"go-backend/common"
 	"time"
 
@@ -34,8 +35,9 @@ type Mod struct {
 	ModrinthData string `gorm:"type:json" json:"modrinth_data,omitempty"`
 
 	// 同步狀態
-	LastSynced time.Time `json:"last_synced"`
-	SyncStatus string    `gorm:"size:20;default:'success'" json:"sync_status"` // success/failed
+	ProjectUpdatedAt time.Time `json:"project_updated_at"`
+	LastSynced       time.Time `json:"last_synced"`
+	SyncStatus       string    `gorm:"size:20;default:'success'" json:"sync_status"` // success/failed
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -71,8 +73,9 @@ type ModVersion struct {
 	Featured  bool  `gorm:"default:false" json:"featured"`
 	Downloads int64 `gorm:"default:0" json:"downloads"`
 
-	Published time.Time `json:"published"`
-	CreatedAt time.Time `json:"created_at"`
+	Published        time.Time `json:"published"`
+	VersionUpdatedAt time.Time `json:"version_updated_at"`
+	CreatedAt        time.Time `json:"created_at"`
 
 	// 關聯
 	Mod        Mod         `gorm:"foreignKey:ModID" json:"mod,omitempty"`
@@ -125,6 +128,125 @@ func GetServerMod(serverID, modID string) (*ServerMod, error) {
 	return &serverMod, nil
 }
 
+func GetModByID(modID string) (*Mod, error) {
+	var mod Mod
+	if err := DB.Where("mod_id = ?", modID).First(&mod).Error; err != nil {
+		return nil, err
+	}
+	return &mod, nil
+}
+
+func GetModVersionByID(versionID string) (*ModVersion, error) {
+	var version ModVersion
+	if err := DB.Where("version_id = ?", versionID).First(&version).Error; err != nil {
+		return nil, err
+	}
+	return &version, nil
+}
+
+func UpsertMod(mod *Mod) (bool, error) {
+	if mod == nil {
+		return false, errors.New("mod is nil")
+	}
+
+	updated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var existing Mod
+		err := tx.Where("mod_id = ?", mod.ModID).First(&existing).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				updated = true
+				return tx.Create(mod).Error
+			}
+			return err
+		}
+
+		if shouldUpdateTime(existing.ProjectUpdatedAt, mod.ProjectUpdatedAt) {
+			updated = true
+			return tx.Model(&Mod{}).
+				Where("mod_id = ?", mod.ModID).
+				Updates(map[string]any{
+					"slug":               mod.Slug,
+					"name":               mod.Name,
+					"summary":            mod.Summary,
+					"description":        mod.Description,
+					"author":             mod.Author,
+					"author_id":          mod.AuthorID,
+					"icon_url":           mod.IconURL,
+					"banner_url":         mod.BannerURL,
+					"downloads":          mod.Downloads,
+					"categories":         mod.Categories,
+					"tags":               mod.Tags,
+					"modrinth_data":      mod.ModrinthData,
+					"project_updated_at": mod.ProjectUpdatedAt,
+					"last_synced":        mod.LastSynced,
+					"sync_status":        mod.SyncStatus,
+				}).Error
+		}
+
+		return nil
+	})
+
+	return updated, err
+}
+
+func UpsertModVersion(version *ModVersion) (bool, error) {
+	if version == nil {
+		return false, errors.New("mod version is nil")
+	}
+
+	updated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var existing ModVersion
+		err := tx.Where("version_id = ?", version.VersionID).First(&existing).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				updated = true
+				return tx.Create(version).Error
+			}
+			return err
+		}
+
+		if shouldUpdateTime(existing.VersionUpdatedAt, version.VersionUpdatedAt) {
+			updated = true
+			return tx.Model(&ModVersion{}).
+				Where("version_id = ?", version.VersionID).
+				Updates(map[string]any{
+					"mod_id":             version.ModID,
+					"version_number":     version.VersionNumber,
+					"version_name":       version.VersionName,
+					"version_type":       version.VersionType,
+					"changelog":          version.Changelog,
+					"game_versions":      version.GameVersions,
+					"files":              version.Files,
+					"primary_file":       version.PrimaryFile,
+					"download_url":       version.DownloadURL,
+					"file_size":          version.FileSize,
+					"file_hash":          version.FileHash,
+					"dependencies":       version.Dependencies,
+					"featured":           version.Featured,
+					"downloads":          version.Downloads,
+					"published":          version.Published,
+					"version_updated_at": version.VersionUpdatedAt,
+				}).Error
+		}
+
+		return nil
+	})
+
+	return updated, err
+}
+
+func shouldUpdateTime(existing, incoming time.Time) bool {
+	if incoming.IsZero() {
+		return false
+	}
+	if existing.IsZero() {
+		return true
+	}
+	return incoming.After(existing)
+}
+
 func ListMods(serverID string) ([]ServerMod, error) {
 	var serverMods []ServerMod
 
@@ -138,6 +260,11 @@ func ListMods(serverID string) ([]ServerMod, error) {
 	}
 
 	return serverMods, nil
+}
+
+func DeleteMod(serverID, modID string) error {
+	return DB.Where("server_id = ? AND mod_id = ?", serverID, modID).
+		Delete(&ServerMod{}).Error
 }
 
 func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) error {

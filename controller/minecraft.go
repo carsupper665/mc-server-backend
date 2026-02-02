@@ -656,10 +656,72 @@ func (sc *ServerController) ListMod(c *gin.Context) {
 		return
 	}
 
-	type ml struct {
-		Name     string `json:"name"`
-		FileName string `json:"file_name"`
+	type modInfo struct {
+		Name         string `json:"name"`
+		ModID        string `json:"mod_id"`
+		Version      string `json:"version"`
+		Enabled      bool   `json:"enabled"`
+		GameVersions string `json:"game_versions"`
 	}
 
-	c.JSON(200, gin.H{"message": modData})
+	resp := make([]modInfo, 0, len(modData))
+	for _, sm := range modData {
+		name := sm.Mod.Name
+		if name == "" {
+			name = sm.ModID
+		}
+		version := sm.Version.VersionNumber
+		if version == "" {
+			version = sm.Version.VersionName
+		}
+		if version == "" {
+			version = sm.VersionID
+		}
+		gameVersions := sm.Version.GameVersions
+		resp = append(resp, modInfo{
+			Name:         name,
+			ModID:        sm.ModID,
+			Version:      version,
+			Enabled:      sm.Enabled,
+			GameVersions: gameVersions,
+		})
+	}
+
+	c.JSON(200, gin.H{"message": resp})
+}
+
+func (sc *ServerController) DelMod(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	modID := c.Query("mod_id")
+	if modID == "" {
+		c.JSON(400, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	err = model.IsOwner(userId, serverID)
+	if err != nil {
+		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+	serverData, err := model.GetServerByID(userId, serverID)
+	fileName := model.ModFileName(serverID, modID)
+	modPath := filepath.Join(serverData.SystemPath, "mods", fileName)
+
+	if err := sc.svc.DeleteMod(serverID, modID, modPath); err != nil {
+		logger.Errorf("Delete mod error, \n	at service DeleteMod %v", err)
+		c.JSON(500, gin.H{"error": "Failed to delete mod."})
+		return
+	}
+	c.JSON(200, gin.H{"message": "mod deleted successfully"})
 }

@@ -12,26 +12,57 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Mod Manager
 
 // ModrinthVersion API 回應結構
 type ModrinthVersion struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	VersionNumber string         `json:"version_number"`
-	Files         []ModrinthFile `json:"files"`
-	GameVersions  []string       `json:"game_versions"`
-	Loaders       []string       `json:"loaders"`
+	ID            string               `json:"id"`
+	ProjectID     string               `json:"project_id"`
+	Name          string               `json:"name"`
+	VersionNumber string               `json:"version_number"`
+	VersionType   string               `json:"version_type"`
+	Changelog     string               `json:"changelog"`
+	DatePublished time.Time            `json:"date_published"`
+	DateModified  time.Time            `json:"date_modified"`
+	Downloads     int64                `json:"downloads"`
+	Featured      bool                 `json:"featured"`
+	Dependencies  []ModrinthDependency `json:"dependencies"`
+	Files         []ModrinthFile       `json:"files"`
+	GameVersions  []string             `json:"game_versions"`
+	Loaders       []string             `json:"loaders"`
+}
+
+type ModrinthProject struct {
+	ID                   string    `json:"id"`
+	Slug                 string    `json:"slug"`
+	Title                string    `json:"title"`
+	Description          string    `json:"description"`
+	Body                 string    `json:"body"`
+	Team                 string    `json:"team"`
+	IconURL              string    `json:"icon_url"`
+	BannerURL            string    `json:"banner_url"`
+	Downloads            int64     `json:"downloads"`
+	Categories           []string  `json:"categories"`
+	AdditionalCategories []string  `json:"additional_categories"`
+	Updated              time.Time `json:"updated"`
+}
+
+type ModrinthDependency struct {
+	ProjectID      string `json:"project_id"`
+	VersionID      string `json:"version_id"`
+	DependencyType string `json:"dependency_type"`
 }
 
 type ModrinthFile struct {
-	URL      string `json:"url"`
-	Filename string `json:"filename"`
-	Primary  bool   `json:"primary"`
-	Size     int64  `json:"size"`
-	FileType string `json:"file_type"`
+	URL      string            `json:"url"`
+	Filename string            `json:"filename"`
+	Primary  bool              `json:"primary"`
+	Size     int64             `json:"size"`
+	FileType string            `json:"file_type"`
+	Hashes   map[string]string `json:"hashes"`
 }
 
 var (
@@ -55,6 +86,10 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 	modInf, err := getLatestOrSpecific(modID, modLoader, MCVersion, ver)
 	if err != nil {
 		return err
+	}
+
+	if err := syncModCache(modID, modInf); err != nil {
+		common.SysError(fmt.Sprintf("Mod metadata sync failed: %v", err))
 	}
 
 	if !isCompatible(modInf, modLoader, MCVersion) {
@@ -171,6 +206,204 @@ func selectModFile(files []ModrinthFile) (*ModrinthFile, error) {
 		}
 	}
 	return &files[0], nil
+}
+
+func syncModCache(modKey string, version *ModrinthVersion) error {
+	var errs []string
+
+	project, raw, err := fetchModProject(modKey)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("project fetch: %v", err))
+	} else if err := upsertModProject(modKey, project, raw); err != nil {
+		errs = append(errs, fmt.Sprintf("project upsert: %v", err))
+	}
+
+	if version != nil {
+		if err := upsertModVersion(modKey, version); err != nil {
+			errs = append(errs, fmt.Sprintf("version upsert: %v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+func fetchModProject(modKey string) (*ModrinthProject, []byte, error) {
+	fullURL := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", modKey)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "carsupper665/mc-server-backend (contact: carsuooer665@hgmail.com)")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var project ModrinthProject
+	if err := json.Unmarshal(raw, &project); err != nil {
+		return nil, nil, err
+	}
+
+	return &project, raw, nil
+}
+
+func upsertModProject(modKey string, project *ModrinthProject, raw []byte) error {
+	if project == nil {
+		return errors.New("project is nil")
+	}
+
+	categories, err := marshalJSON(project.Categories)
+	if err != nil {
+		return err
+	}
+	tags, err := marshalJSON(project.AdditionalCategories)
+	if err != nil {
+		return err
+	}
+
+	rawData := string(raw)
+	if rawData == "" {
+		if data, err := json.Marshal(project); err == nil {
+			rawData = string(data)
+		}
+	}
+
+	mod := model.Mod{
+		ModID:            modKey,
+		Slug:             project.Slug,
+		Name:             project.Title,
+		Summary:          project.Description,
+		Description:      project.Body,
+		Author:           "",
+		AuthorID:         project.Team,
+		IconURL:          project.IconURL,
+		BannerURL:        project.BannerURL,
+		Downloads:        project.Downloads,
+		Categories:       categories,
+		Tags:             tags,
+		ModrinthData:     rawData,
+		ProjectUpdatedAt: project.Updated,
+		LastSynced:       time.Now(),
+		SyncStatus:       "success",
+	}
+
+	_, err = model.UpsertMod(&mod)
+	return err
+}
+
+func upsertModVersion(modKey string, version *ModrinthVersion) error {
+	if version == nil {
+		return errors.New("version is nil")
+	}
+
+	filesJSON, err := marshalJSON(version.Files)
+	if err != nil {
+		return err
+	}
+	depsJSON, err := marshalJSON(version.Dependencies)
+	if err != nil {
+		return err
+	}
+	gameVersionsJSON, err := marshalJSON(version.GameVersions)
+	if err != nil {
+		return err
+	}
+
+	primaryFile, _ := selectModFile(version.Files)
+	modVersion := model.ModVersion{
+		VersionID:        version.ID,
+		ModID:            modKey,
+		VersionNumber:    version.VersionNumber,
+		VersionName:      version.Name,
+		VersionType:      version.VersionType,
+		Changelog:        version.Changelog,
+		GameVersions:     gameVersionsJSON,
+		Files:            filesJSON,
+		Dependencies:     depsJSON,
+		Featured:         version.Featured,
+		Downloads:        version.Downloads,
+		Published:        pickPublishedAt(version),
+		VersionUpdatedAt: pickVersionUpdatedAt(version),
+	}
+
+	if primaryFile != nil {
+		modVersion.PrimaryFile = primaryFile.Filename
+		modVersion.DownloadURL = primaryFile.URL
+		modVersion.FileSize = primaryFile.Size
+		modVersion.FileHash = pickFileHash(primaryFile)
+	}
+
+	_, err = model.UpsertModVersion(&modVersion)
+	return err
+}
+
+func pickPublishedAt(version *ModrinthVersion) time.Time {
+	if version == nil {
+		return time.Time{}
+	}
+	if !version.DatePublished.IsZero() {
+		return version.DatePublished
+	}
+	return version.DateModified
+}
+
+func pickVersionUpdatedAt(version *ModrinthVersion) time.Time {
+	if version == nil {
+		return time.Time{}
+	}
+	if !version.DateModified.IsZero() {
+		return version.DateModified
+	}
+	return version.DatePublished
+}
+
+func pickFileHash(file *ModrinthFile) string {
+	if file == nil {
+		return ""
+	}
+	if len(file.Hashes) == 0 {
+		return ""
+	}
+	if hash, ok := file.Hashes["sha512"]; ok {
+		return hash
+	}
+	if hash, ok := file.Hashes["sha1"]; ok {
+		return hash
+	}
+	for _, hash := range file.Hashes {
+		return hash
+	}
+	return ""
+}
+
+func marshalJSON(value any) (string, error) {
+	if value == nil {
+		return "[]", nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	if string(data) == "null" {
+		return "[]", nil
+	}
+	return string(data), nil
 }
 
 func modDownload(file ModrinthFile, workDir string) (string, error) {

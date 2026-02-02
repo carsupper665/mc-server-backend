@@ -90,6 +90,27 @@ func (s *ServerService) ListBackups(sid, workDir string) ([]string, error) {
 	return s.mgr.ServerSaveList(sid, workDir)
 }
 
+func (s *ServerService) DeleteMod(sid, modID, modPath string) error {
+	dbBk, err := model.GetServerMod(sid, modID)
+	if err != nil {
+		return err
+	}
+	if err := model.DeleteMod(sid, modID); err != nil {
+		return err
+	}
+	if err := s.mgr.DeleteMod(sid, modPath); err != nil {
+		_ = model.AddModToServer(
+			sid,
+			dbBk.ModID,
+			dbBk.VersionID,
+			dbBk.Filename,
+			dbBk.AutoUpdate,
+		)
+		return err
+	}
+	return nil
+}
+
 func (s *ServerService) DisableMod(sid, modID, modPath string) error {
 	if err := s.mgr.DisableMod(sid, modPath); err != nil {
 		return err

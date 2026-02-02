@@ -3,29 +3,34 @@ import requests, json, time
 BASE_URL = "http://localhost:8080"
 
 class HttpTester:
-    def __init__(self, session: requests.Session = None):
+    def __init__(self, session: requests.Session = None, verbose: bool = True):
         self.ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
         self.session = requests.Session() if session is None else session
         self.is_sess_exist = session is not None
         self.session.headers.update({"Content-Type": "application/json"})
         self.session.headers.update({"User-Agent": self.ua})
+        self.verbose = verbose
 
     def login_and_verify(self, username: str, password: str):
         status, login_res = self._login(username, password)
 
         if status == 202:
-            print("check your email for verification code")
+            if self.verbose:
+                print("check your email for verification code")
             code = input("enter verification code: ")
             status, verify_res = self._verification(code)
             if status != 200:
-                print(verify_res)
+                if self.verbose:
+                    print(verify_res)
                 raise Exception("verification failed")
 
         if status != 200:
-            print(login_res)
+            if self.verbose:
+                print(login_res)
             raise Exception("login failed")
 
-        print("login successful")
+        if self.verbose:
+            print("login successful")
         return status, login_res
 
     def _verification(self, code: str):
@@ -42,7 +47,8 @@ class HttpTester:
 
     def server_rollback(self, file_name: str = "test", server_id: str = "sid"):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             username = input("enter username: ")
             password = input("enter password: ")
             self.login_and_verify(username, password)
@@ -54,7 +60,8 @@ class HttpTester:
 
     def create_server(self, server_type: str, server_ver: str, display_name: str):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return None, None
         url = f"{BASE_URL}/user/cs"
         response = self.session.post(url,
@@ -72,7 +79,8 @@ class HttpTester:
         if action not in ["start", "stop", "backup", "ls-backup", "usage"] and action not in v1_api:
             raise ValueError("action must be 'start' or 'stop'")
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return None, None
         if action not in v1_api:
             url = f"{BASE_URL}/mc-api/a/{action}/{server_id}"
@@ -87,7 +95,8 @@ class HttpTester:
 
     def add_mod(self, server_id: str, mod_id: str, ver_id: str = "", auto_update: bool = True):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return None, None
         url = f"{BASE_URL}/api/v1/server/mod/add/{server_id}"
         post_data = {
@@ -98,9 +107,20 @@ class HttpTester:
         response = self.session.post(url, json=post_data)
         return self._res_handler(response)
 
+    def del_mod(self, server_id: str, mod_id: str):
+        if not self.is_sess_exist:
+            if self.verbose:
+                print("please login")
+            return None, None
+        url = f"{BASE_URL}/api/v1/server/mod/remove/{server_id}"
+        params = {"mod_id": mod_id}
+        response = self.session.get(url, params=params)
+        return self._res_handler(response)
+
     def toggle_mod(self, server_id: str, mod_id: str):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return
         url = f"{BASE_URL}/api/v1/server/mod/toggle/{server_id}"
         params = {"mod_id": mod_id}
@@ -109,7 +129,8 @@ class HttpTester:
 
     def list_mods(self, server_id: str):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return None, None
         url = f"{BASE_URL}/api/v1/server/mod/list/{server_id}"
         response = self.session.get(url,)
@@ -129,20 +150,24 @@ class HttpTester:
     
     def list_servers(self):
         if not self.is_sess_exist:
-            print("please login")
+            if self.verbose:
+                print("please login")
             return None, None
         url = f"{BASE_URL}/user/myservers"
         response = self.session.get(url)
         return self._res_handler(response)
 
     def _res_handler(self, response: requests.Response):
-        print(response.status_code)
+        if self.verbose:
+            print(response.status_code)
         try:
             json_res = response.json()
-            print(json_res)
+            if self.verbose:
+                print(json_res)
         except json.decoder.JSONDecodeError:
-            print("response is not json")
-            print(response.raw)
+            if self.verbose:
+                print("response is not json")
+                print(response.raw)
         return response.status_code, response
     
 def login_again(username: str, password: str):
@@ -152,13 +177,16 @@ def login_again(username: str, password: str):
     term.save_cookies("cookies.json")
 
 if __name__ == "__main__":
+    # 9s6osm5g AANobbMI
     term = HttpTester()
     term.load_cookies("cookies.json")
-    term.list_mods(server_id="mcsfv-fabric-0269-OID-1")
-    term.add_mod(server_id="mcsfv-fabric-0269-OID-1", mod_id="9s6osm5g")
-    term.list_mods(server_id="mcsfv-fabric-0269-OID-1")
-    # term.toggle_mod(server_id="mcsfv-fabric-0269-OID-1", mod_id="AANobbMI")
-    # term.create_server("Fabric", "1.20.1", "1.20.1 Test")
+    # term.add_mod("mcsfv-1.20.1-3515-OID-1", "9s6osm5g")
+    # term.add_mod("mcsfv-1.21.5-0379-OID-1", "AANobbMI")
 
-    # term.add_mod(server_id='mcsfv-fabric-0269-OID-1', mod_id='AANobbMI') # add-mod-test
-    # term.add_mod(server_id='mcsfv-fabric-6308-OID-1', mod_id='AANobbMI')
+    term.list_mods("mcsfv-1.21.5-4782-OID-1")
+    term.del_mod("mcsfv-1.21.5-4782-OID-1", "9s6osm5g")
+
+    term.list_mods("mcsfv-1.21.5-4782-OID-1")
+    term.add_mod("mcsfv-1.21.5-4782-OID-1", "9s6osm5g")
+
+    term.list_mods("mcsfv-1.21.5-4782-OID-1")
