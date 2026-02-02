@@ -47,7 +47,7 @@ func createRootAccountForTest() error {
 			AccessToken: nil,
 		}
 		DB.Create(&rootUser)
-		common.SysLog("no user exists, create a root user for you: username is " + username + ", password is " + password + ", email is:" + userEmail)
+		logger.Infof("Root UserName: %s, Email: %s, Password: %s,", username, userEmail, password)
 	}
 	return nil
 }
@@ -56,10 +56,12 @@ func InitSqliteDB(isLog bool) (*gorm.DB, error) {
 	return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
 	})
-
 }
 
+var logger *common.SysLogger
+
 func InitDB() error {
+	logger = common.Logger
 	db, err := InitSqliteDB(false)
 	if err != nil {
 		return err
@@ -73,7 +75,7 @@ func InitDB() error {
 	sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
 	sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
 	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
-	common.SysLog("database migration started")
+	logger.Info("database migration started")
 	err = migrateDB()
 	return err
 }
@@ -110,12 +112,12 @@ func migrateDB() error {
 func CheckRootUser() error {
 	createRoot := common.GetEnvOrDefaultBool("CREATE_ROOT_USER", false)
 	if !createRoot {
-		common.SysLog("CREATE_ROOT_USER disabled, skip root user check")
+		logger.Info("CREATE_ROOT_USER disabled, skip root user check")
 		return nil
 	}
 
 	if RootUserExists() {
-		common.SysLog("Root user already exists, skip creating root user")
+		logger.Info("Root user already exists, skip creating root user")
 		return nil
 	}
 
@@ -123,6 +125,6 @@ func CheckRootUser() error {
 		return err
 	}
 
-	common.SysLog("Root user created successfully")
+	logger.Info("Root user created successfully")
 	return nil
 }

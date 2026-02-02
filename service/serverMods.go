@@ -61,13 +61,21 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 		return UnSupportModErr
 	}
 
+	file, err := selectModFile(modInf.Files)
+	if err != nil {
+		return err
+	}
+	if file.URL == "" || file.Filename == "" {
+		return errors.New("mod file metadata missing")
+	}
+
 	// download mod to work dir
-	if err := modDownload(*modInf, workDir); err != nil {
+	if err := modDownload(*file, workDir); err != nil {
 		return err
 	}
 
 	// write to DB
-	if err := model.AddModToServer(sid, modID, modInf.ID, modInf.Files[0].Filename, autoUpdate); err != nil {
+	if err := model.AddModToServer(sid, modID, modInf.ID, file.Filename, autoUpdate); err != nil {
 		return err
 	}
 
@@ -114,7 +122,7 @@ func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string) (*Modri
 	// 在版本列表中查找匹配的版本號
 	if modeVer != "" {
 		for i := range versions {
-			if versions[i].VersionNumber == modeVer {
+			if versions[i].ID == modeVer || versions[i].VersionNumber == modeVer {
 				return &versions[i], nil
 			}
 		}
@@ -130,6 +138,16 @@ func isCompatible(version *ModrinthVersion, loader, gameVersion string) bool {
 
 	// TODO: 更嚴格的 loader 檢查 不應該是強制匹配 應該包含1.0.0以上之類的
 
+	if loader != "" && len(version.Loaders) > 0 {
+		loaderMatch = false
+		for _, l := range version.Loaders {
+			if strings.EqualFold(l, loader) {
+				loaderMatch = true
+				break
+			}
+		}
+	}
+
 	for _, gv := range version.GameVersions {
 		if gv == gameVersion {
 			gameVersionMatch = true
@@ -141,7 +159,19 @@ func isCompatible(version *ModrinthVersion, loader, gameVersion string) bool {
 	return loaderMatch && gameVersionMatch
 }
 
-func modDownload(modInfo ModrinthVersion, workDir string) error {
+func selectModFile(files []ModrinthFile) (*ModrinthFile, error) {
+	if len(files) == 0 {
+		return nil, errors.New("mod file list is empty")
+	}
+	for i := range files {
+		if files[i].Primary {
+			return &files[i], nil
+		}
+	}
+	return &files[0], nil
+}
+
+func modDownload(file ModrinthFile, workDir string) error {
 
 	modsDir := filepath.Join(workDir, "mods")
 	if err := os.MkdirAll(modsDir, 0755); err != nil {
@@ -149,7 +179,7 @@ func modDownload(modInfo ModrinthVersion, workDir string) error {
 	}
 
 	// download
-	dlUrl := modInfo.Files[0].URL
+	dlUrl := file.URL
 	var (
 		resp *http.Response
 		err  error
@@ -161,11 +191,11 @@ func modDownload(modInfo ModrinthVersion, workDir string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		common.SysError(fmt.Sprintf("Error while mod download with status: %s", resp.StatusCode))
+		common.SysError(fmt.Sprintf("Error while mod download with status: %d", resp.StatusCode))
 		return NetWorkErr
 	}
 
-	output, outErr := os.Create(modsDir + "/" + modInfo.Files[0].Filename)
+	output, outErr := os.Create(filepath.Join(modsDir, file.Filename))
 	if outErr != nil {
 		common.SysError(fmt.Sprintf("Error while outputing mod: %s", outErr.Error()))
 		return outErr

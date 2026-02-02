@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"go-backend/common"
 	"go-backend/model"
@@ -15,17 +16,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mattn/go-colorable"
 )
 
 const (
-	tmpName    = "main_new.exe"
-	curr       = "main.exe"
-	backup     = "main.exe.bk"
-	logName    = "update.log"
-	checkerLog = "update_checker.log"
-	repo       = "carsupper665/mc-server-backend"
+	tmpName = "main_new.exe"
+	curr    = "main.exe"
+	backup  = "main.exe.bk"
+	repo    = "carsupper665/mc-server-backend"
 )
 
+var logPath = flag.String("update-log-name", "update", "specify the log name")
+var checkerLog = flag.String("updater-log-name", "update_checker", "specify the log name")
 var (
 	ErrAlreadyLatest  = errors.New("already updated")
 	ErrUpdateDisabled = errors.New("auto update is disabled")
@@ -83,11 +86,11 @@ func (u *UpdateLogger) Write(p []byte) (n int, err error) {
 }
 
 func (u *UpdateLogger) Info(msg string) {
-	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorBrightGreen+"[UPDT][INFO]", common.ColorReset, msg)
+	_, _ = fmt.Fprintf(u, "%s%s|%s \n", common.ColorBrightGreen+"[UPDT][INFO]", common.ColorReset, msg)
 }
 
 func (u *UpdateLogger) Error(msg string) {
-	_, _ = fmt.Fprintf(u, "%s%s|%s\n", common.ColorRed+"[UPDT][ERROR]", common.ColorReset, msg)
+	_, _ = fmt.Fprintf(u, "%s%s|%s \n", common.ColorRed+"[UPDT][ERROR]", common.ColorReset, msg)
 	_ = model.WriteUpdateErrorLog(msg)
 }
 
@@ -113,19 +116,19 @@ func getLogger(logFile string) *UpdateLogger {
 		if err != nil {
 			log.Fatal("failed to open log file:", err)
 		}
-		return newLogger(os.Stdout, file)
+		stdout := colorable.NewColorableStdout()
+		return newLogger(stdout, file)
 	}
 	return nil
 }
 
 // CheckForUpdates 初次啟動時的更新檢查
 func CheckForUpdates() error {
-	logger := getLogger(logName)
-	if logger == nil {
+	logger, err := common.NewSysLogger("updater", logPath, 50000)
+	if logger == nil || err != nil {
 		_ = model.WriteUpdateErrorLog("startup logger failed")
 		return errors.New("startup logger failed")
 	}
-	defer logger.Close()
 
 	_ = model.SetLastCheck(time.Now())
 
@@ -175,7 +178,7 @@ func CheckForUpdates() error {
 }
 
 // fetchLatestRelease 獲取最新版本資訊
-func fetchLatestRelease(logger *UpdateLogger) (*release, error) {
+func fetchLatestRelease(logger *common.SysLogger) (*release, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -201,7 +204,7 @@ func fetchLatestRelease(logger *UpdateLogger) (*release, error) {
 	return &r, nil
 }
 
-func downloadAndApplyUpdate(url, expectedHash string, logger *UpdateLogger) error {
+func downloadAndApplyUpdate(url, expectedHash string, logger *common.SysLogger) error {
 	logger.Info("Downloading update...")
 
 	client := &http.Client{Timeout: 30 * time.Minute}
@@ -293,12 +296,11 @@ func StartUpdateChecker(interval time.Duration, onUpdateSuccess func()) {
 
 // updateChecker 背景更新檢查器
 func updateChecker(interval time.Duration, onUpdateSuccess func()) {
-	logger := getLogger(checkerLog)
-	if logger == nil {
+	logger, err := common.NewSysLogger("checker", checkerLog, 50000)
+	if logger == nil || err != nil {
 		common.SysError("failed to start update checker logger")
 		return
 	}
-	defer logger.Close()
 
 	logger.Info(fmt.Sprintf("Update checker started, interval: %s", interval))
 
@@ -331,7 +333,7 @@ func updateChecker(interval time.Duration, onUpdateSuccess func()) {
 }
 
 // performUpdate 執行更新檢查和下載
-func performUpdate(logger *UpdateLogger) error {
+func performUpdate(logger *common.SysLogger) error {
 	_ = model.SetLastCheck(time.Now())
 
 	if UpdaterStatus.IsRunning() {

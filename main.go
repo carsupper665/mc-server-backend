@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go-backend/common"
+	"go-backend/controller"
 	"go-backend/middleware"
 	"go-backend/model"
 	"go-backend/router"
@@ -21,8 +22,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// 用於控制 server 關閉的 channel
-var shutdownChan = make(chan struct{}, 1)
+var logger *common.SysLogger
 
 func main() {
 	// .env config load
@@ -34,32 +34,47 @@ func main() {
 
 	// Setup logger
 	common.SetupLogger()
-	common.SysLog("Backend Server Engine | " + common.Version + common.ColorBuild + " started")
+	err = common.IntiLogger("system")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	logger = common.Logger
+
+	//common.SysLog("Backend Server Engine | " + common.Version + common.ColorBuild + " started")
+	logger.Infof("Backend Server Engine | %s%s started", common.Version, common.ColorBuild)
 
 	if os.Getenv("DEBUG") != "true" {
-		common.SysLog(common.ColorGreen + "Running in Release Mode" + common.ColorReset)
+		logger.Info(common.ColorGreen + "Running in Release Mode" + common.ColorReset)
 		gin.SetMode(gin.ReleaseMode)
 	} else {
-		common.SysLog(common.ColorBrightCyan + "Debug mode is enabled, running in Debug Mode" + common.ColorReset)
+		logger.Info(common.ColorBrightCyan + "Debug mode is enabled, running in Debug Mode" + common.ColorReset)
+	}
+
+	err = controller.InitLogger()
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 
 	// init DB
 	err = model.InitDB()
 	if err != nil {
-		common.FatalLog("failed to init DB: " + err.Error())
+		logger.Fatal("failed to init DB: %s", err.Error())
 	}
 	errUpLog := model.InitUpdateLogTable()
 	if errUpLog != nil {
-		common.FatalLog("failed to init update log table: " + errUpLog.Error())
+		logger.Fatal("failed to init update log table: %s", errUpLog.Error())
 	} else {
 
 		updateErr := service.CheckForUpdates()
 		if updateErr != nil {
 			if !errors.Is(updateErr, service.ErrAlreadyLatest) && !errors.Is(updateErr, service.ErrUpdateDisabled) {
-				common.SysError("Update check failed: " + updateErr.Error())
+				logger.Errorf("Update check failed: %s", updateErr.Error())
 			}
 		} else {
-			common.SysLog("Application updated successfully, please restart the application.")
+			logger.Info("Application updated successfully, please restart the application.")
 			return
 		}
 
@@ -68,16 +83,16 @@ func main() {
 	// check root user
 	err = model.CheckRootUser()
 	if err != nil {
-		common.SysError("failed to create root user: " + err.Error())
+		logger.Errorf("failed to create root user: %s", err.Error())
 	}
 
 	// init HTTP server
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysError(fmt.Sprintf("panic detected: %v", err))
+		logger.Errorf("panic detected: %v", err)
 		err = common.SendErrorToDc(fmt.Sprintf("Panic detected: %v", err))
 		if err != nil {
-			common.SysError(fmt.Sprintf("Failed to send error to Discord: %v", err))
+			logger.Errorf("Failed to send error to Discord: %v", err)
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
@@ -113,17 +128,18 @@ func main() {
 	service.StartUpdateChecker(3*24*time.Hour, func() {
 		err := restartApplication()
 		if err != nil {
-			common.FatalLog("failed to restart application: " + err.Error())
+			logger.Fatal("failed to restart application: " + err.Error())
 		}
 		os.Exit(0)
 	})
-	common.SysLog(fmt.Sprintf("HTTP server listening on :%s", port))
+
+	time.Sleep(500 * time.Millisecond)
+	logger.Infof("HTTP server listening on :%s", port)
+
 	err = server.Run(":" + port)
 	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
+		logger.Fatal("failed to start HTTP server: " + err.Error())
 	}
-
-	common.SysLog("Application stopped")
 }
 
 // restartApplication 重啟應用程式
@@ -143,7 +159,7 @@ func restartApplication() error {
 		return fmt.Errorf("failed to start new process: %w", err)
 	}
 
-	common.SysLog(fmt.Sprintf("New process started with PID: %d", cmd.Process.Pid))
+	logger.Infof("New process started with PID: %d", cmd.Process.Pid)
 
 	if err := cmd.Process.Release(); err != nil {
 		return fmt.Errorf("failed to release new process: %w", err)

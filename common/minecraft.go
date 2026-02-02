@@ -12,14 +12,14 @@ import (
 type fabricLoaderCompatItem struct {
 	Loader struct {
 		Version string `json:"version"`
-		Stable  bool   `json:"stable"`
+		Stable  bool   `json:"Stable"`
 	} `json:"loader"`
 }
 
 type fabricInstallerItem struct {
 	Version string `json:"version"`
 	URL     string `json:"url"`
-	Stable  *bool  `json:"stable,omitempty"` // 有些情況可能沒有這欄，做成 optional
+	Stable  *bool  `json:"Stable,omitempty"` // 有些情況可能沒有這欄，做成 optional
 }
 
 func FetchLatestFabricLoaderAndInstaller(mcVersion string) (loaderVer string, installerVer string, err error) {
@@ -56,7 +56,7 @@ func FetchLatestFabricLoaderAndInstaller(mcVersion string) (loaderVer string, in
 			return "", "", fmt.Errorf("no fabric loader versions for mc=%s", mcVersion)
 		}
 
-		// newest first；stable 優先 :contentReference[oaicite:2]{index=2}
+		// newest first；Stable 優先 :contentReference[oaicite:2]{index=2}
 		for _, it := range items {
 			if it.Loader.Stable && it.Loader.Version != "" {
 				loaderVer = it.Loader.Version
@@ -100,7 +100,7 @@ func FetchLatestFabricLoaderAndInstaller(mcVersion string) (loaderVer string, in
 			return "", "", fmt.Errorf("no fabric installer versions returned")
 		}
 
-		// 若有 stable 欄位就優先 stable；否則直接取第一筆（常見做法）:contentReference[oaicite:4]{index=4}
+		// 若有 Stable 欄位就優先 Stable；否則直接取第一筆（常見做法）:contentReference[oaicite:4]{index=4}
 		for _, it := range items {
 			if it.Version == "" {
 				continue

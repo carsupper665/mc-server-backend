@@ -23,6 +23,9 @@ type Mod struct {
 	IconURL   string `gorm:"size:500" json:"icon_url"`
 	BannerURL string `gorm:"size:500" json:"banner_url"`
 
+	// 統計
+	Downloads int64 `gorm:"default:0" json:"downloads"`
+
 	// 分類標籤
 	Categories string `gorm:"type:json" json:"categories"` // ["technology", "utility"]
 	Tags       string `gorm:"type:json" json:"tags"`       // ["performance", "optimization"]
@@ -55,18 +58,18 @@ type ModVersion struct {
 	GameVersions string `gorm:"type:json;not null" json:"game_versions"` // ["1.20.1", "1.20.2"]
 
 	// 下載資訊
-	Files string `gorm:"type:json" json:"files"` // 檔案列表(完整資訊)
-	//PrimaryFile   string    `gorm:"size:500" json:"primary_file"`  // 主要檔案名稱
-	//DownloadURL   string    `gorm:"size:1000" json:"download_url"`
-	FileSize int64  `json:"file_size"`
-	FileHash string `gorm:"size:64" json:"file_hash"` // SHA256
+	Files       string `gorm:"type:json" json:"files"`       // 檔案列表(完整資訊)
+	PrimaryFile string `gorm:"size:500" json:"primary_file"` // 主要檔案名稱
+	DownloadURL string `gorm:"size:1000" json:"download_url"`
+	FileSize    int64  `json:"file_size"`
+	FileHash    string `gorm:"size:64" json:"file_hash"` // SHA256
 
 	// 依賴關係
 	Dependencies string `gorm:"type:json" json:"dependencies"` // 依賴的其他模組
 
 	//// 狀態
-	//Featured      bool      `gorm:"default:false" json:"featured"`
-	//Downloads     int64     `gorm:"default:0" json:"downloads"`
+	Featured  bool  `gorm:"default:false" json:"featured"`
+	Downloads int64 `gorm:"default:0" json:"downloads"`
 
 	Published time.Time `json:"published"`
 	CreatedAt time.Time `json:"created_at"`
@@ -78,8 +81,8 @@ type ModVersion struct {
 
 type ServerMod struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
-	ServerID  string `gorm:"size:32;not null" json:"server_id"`
-	ModID     string `gorm:"index:idx_server_mod,unique;size:50;not null" json:"mod_id"`
+	ServerID  string `gorm:"index:idx_server_mod,unique,priority:1;size:32;not null" json:"server_id"`
+	ModID     string `gorm:"index:idx_server_mod,unique,priority:2;size:50;not null" json:"mod_id"`
 	VersionID string `gorm:"size:50;not null" json:"version_id"` // 已安裝的版本
 	Filename  string `gorm:"size:200" json:"file_name"`          // 檔案名稱
 
@@ -135,7 +138,7 @@ func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) err
 				ModID:       modID,
 				VersionID:   versionID,
 				Filename:    filename,
-				Status:      "installed",
+				Status:      "enable",
 				Enabled:     true,
 				AutoUpdate:  autoUpdate,
 				InstalledAt: now,
@@ -159,8 +162,30 @@ func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) err
 
 func ModExists(sid, modID string) (bool, error) {
 	var n int64
-	err := DB.Model(&Mod{}).
-		Where("mod_id = ?", sid, modID).
+	err := DB.Model(&ServerMod{}).
+		Where("server_id = ? AND mod_id = ?", sid, modID).
 		Count(&n).Error
 	return n > 0, err
+}
+
+func ChangeModStatus(sid, modID, status string) error {
+	return DB.Model(&ServerMod{}).Where("server_id = ? AND mod_id = ?", sid, modID).
+		Updates(map[string]any{
+			"status": status,
+		}).Error
+}
+
+func ModFileName(sid, modID string) string {
+	var sm ServerMod
+
+	err := DB.
+		Where("server_id = ? AND mod_id = ?", sid, modID).
+		First(&sm).Error
+
+	if err != nil {
+		logger.Errorf("Failed to get server mod filename: %v", err)
+		return ""
+	}
+
+	return sm.Filename
 }

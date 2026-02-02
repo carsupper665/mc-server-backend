@@ -3,16 +3,18 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go-backend/common"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	Fabric  = "Fabric"
-	Vanilla = "Vanilla"
+	Fabric  = "fabric"
+	Vanilla = "vanilla"
 )
 
 type CreateServerRequest struct {
@@ -87,39 +89,37 @@ func (s *ServerService) ListBackups(sid, workDir string) ([]string, error) {
 	return s.mgr.ServerSaveList(sid, workDir)
 }
 
-func CreateServer(ownerID string, serverType string, serverVer string, fabricLoader string, fabricInstaller string) (string, error) {
-	var idPerFix, fURL, vURL string
-	var err error
+func (s *ServerService) DisableMod(sid, modFile string) error { return s.mgr.DisableMod(sid, modFile) }
 
-	if fabricInstaller == "" {
+var (
+	fabricLoader = common.LatestFabricLoaderVersion
+)
+
+func CreateServer(oid, serverType, serverVer, loader, installer string) (string, error) {
+	var (
+		serverBasePath  = common.MinecraftServerPath
 		fabricInstaller = common.LatestFabricInstallerVersion
+	)
+
+	var idPerFix, url string
+	if loader == "" {
+		loader = fabricLoader
 	}
 
-	switch serverType {
-	case Fabric:
-		idPerFix = "mcsfv-"
-		fURL = fmt.Sprintf(
-			"https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
-			serverVer, fabricLoader, fabricInstaller,
-		)
-	case Vanilla:
-		if idPerFix == "" {
-			idPerFix = "mcsvv-"
-		}
-		url, ok := common.VanillaServerUrl[serverVer]
-		if !ok {
-			return "", fmt.Errorf("unsupported server version: %s", serverVer)
-		}
-		vURL = url
-	default:
-		return "", fmt.Errorf("unsupported server type: %s", serverType)
+	if installer == "" {
+		installer = fabricInstaller
+	}
+	serverType = strings.ToLower(serverType)
+	idPerFix, url, err := serverUri(serverType, serverVer, loader)
+	if err != nil {
+		return "", err
 	}
 
 	uid := common.GetRandomIntString(4)
-	serverID := idPerFix + serverVer + "-" + uid + "-" + "OID-" + ownerID
+	serverID := fmt.Sprintf("%s%s-%s-OID-%s", idPerFix, serverVer, uid, oid)
 
-	sysPath := filepath.Join(common.MinecraftServerPath, serverID)
-	// defer 一個清理機制：若後續 err != nil，就把 sysPath 刪掉
+	sysPath := filepath.Join(serverBasePath, serverID)
+	// defer clean file if error
 	defer func() {
 		if err != nil {
 			if clearErr := ErrorFileClear(sysPath); clearErr != nil {
@@ -133,18 +133,9 @@ func CreateServer(ownerID string, serverType string, serverVer string, fabricLoa
 		return "", fmt.Errorf("failed to create server directory %s: %w", sysPath, err)
 	}
 
-	if vURL != "" {
-		vanillaJarPath := filepath.Join(sysPath, "server.jar")
-		if err = common.DownloadFile(vanillaJarPath, vURL); err != nil {
-			return "", fmt.Errorf("failed to download vanilla server jar: %w", err)
-		}
-	}
-
-	if fURL != "" {
-		fabricInstallerPath := filepath.Join(sysPath, "server.jar")
-		if err = common.DownloadFile(fabricInstallerPath, fURL); err != nil {
-			return "", fmt.Errorf("failed to download fabric installer: %w", err)
-		}
+	path := filepath.Join(sysPath, "server.jar")
+	if err = common.DownloadFile(path, url); err != nil {
+		return "", fmt.Errorf("failed to download fabric installer: %w", err)
 	}
 
 	eulaPath := filepath.Join(sysPath, "eula.txt")
@@ -155,6 +146,103 @@ func CreateServer(ownerID string, serverType string, serverVer string, fabricLoa
 
 	return serverID, nil
 }
+
+func serverUri(ServerType, serverVer, fabricLoader string) (string, string, error) {
+	var err error
+	var perFix, uri string
+	var ok bool
+	var fabricInstaller = common.LatestFabricInstallerVersion
+	ServerType = strings.ToLower(ServerType)
+	switch ServerType {
+	case Fabric:
+		perFix = "mcsfv-"
+		uri = fmt.Sprintf(
+			"https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
+			serverVer, fabricLoader, fabricInstaller,
+		)
+	case Vanilla:
+		perFix = "mcsvv-"
+		uri, ok = common.VanillaServerUrl[serverVer]
+		if !ok {
+			err = errors.New("vanilla server url is empty")
+			return "", "", err
+		}
+	default:
+		err = errors.New("unsupported server type")
+		return "", "", err
+	}
+	return perFix, uri, nil
+}
+
+//
+//func OldCreateServer(ownerID string, serverType string, serverVer string, fabricLoader string, fabricInstaller string) (string, error) {
+//	var idPerFix, fURL, vURL string
+//	var err error
+//
+//	if fabricInstaller == "" {
+//		fabricInstaller = common.LatestFabricInstallerVersion
+//	}
+//
+//	switch serverType {
+//	case Fabric:
+//		idPerFix = "mcsfv-"
+//		fURL = fmt.Sprintf(
+//			"https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
+//			serverVer, fabricLoader, fabricInstaller,
+//		)
+//	case Vanilla:
+//		if idPerFix == "" {
+//			idPerFix = "mcsvv-"
+//		}
+//		url, ok := common.VanillaServerUrl[serverVer]
+//		if !ok {
+//			return "", fmt.Errorf("unsupported server version: %s", serverVer)
+//		}
+//		vURL = url
+//	default:
+//		return "", fmt.Errorf("unsupported server type: %s", serverType)
+//	}
+//
+//	uid := common.GetRandomIntString(4)
+//	serverID := idPerFix + serverVer + "-" + uid + "-" + "OID-" + ownerID
+//
+//	sysPath := filepath.Join(common.MinecraftServerPath, serverID)
+//	// defer 一個清理機制：若後續 err != nil，就把 sysPath 刪掉
+//	defer func() {
+//		if err != nil {
+//			if clearErr := ErrorFileClear(sysPath); clearErr != nil {
+//				msg := fmt.Sprintf("warning: %v", clearErr)
+//				common.SysLog(msg)
+//			}
+//		}
+//	}()
+//
+//	if err = os.MkdirAll(sysPath, 0755); err != nil {
+//		return "", fmt.Errorf("failed to create server directory %s: %w", sysPath, err)
+//	}
+//
+//	if vURL != "" {
+//		vanillaJarPath := filepath.Join(sysPath, "server.jar")
+//		if err = common.DownloadFile(vanillaJarPath, vURL); err != nil {
+//			return "", fmt.Errorf("failed to download vanilla server jar: %w", err)
+//		}
+//	}
+//
+//	if fURL != "" {
+//		fabricInstallerPath := filepath.Join(sysPath, "server.jar")
+//		if err = common.DownloadFile(fabricInstallerPath, fURL); err != nil {
+//			return "", fmt.Errorf("failed to download fabric installer: %w", err)
+//		}
+//	}
+//
+//	eulaPath := filepath.Join(sysPath, "eula.txt")
+//	eulaContent := []byte("eula=true\n")
+//	if err = os.WriteFile(eulaPath, eulaContent, 0644); err != nil {
+//		return "", fmt.Errorf("failed to write eula.txt: %w", err)
+//	}
+//
+//	return serverID, nil
+//}
 
 func GetAllFabricVersions() ([]string, error) {
 	resp, err := http.Get("https://meta.fabricmc.net/v2/versions/game")

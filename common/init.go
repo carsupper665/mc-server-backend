@@ -4,7 +4,9 @@ package common
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -23,6 +25,7 @@ var (
 	BatchUpdateInterval int
 	BatchUpdateEnabled  = false
 	RelayTimeout        int
+	Logger              *SysLogger
 )
 
 func LoadEnv() {
@@ -79,8 +82,19 @@ func LoadEnv() {
 	GlobalApiRateLimitNum = GetEnvOrDefault("GLOBAL_API_RATE_LIMIT", 60)
 	GlobalApiRateLimitDuration = int64(GetEnvOrDefault("GLOBAL_API_RATE_LIMIT_DURATION", 60))
 	DCWebHookUrl = GetEnvOrDefaultString("DC_WEBHOOK_URL", "")
-	LatestFabricLoaderVersion = GetEnvOrDefaultString("LATEST_FABRIC_LOADER_VERSION", "")
-	LatestFabricInstallerVersion = GetEnvOrDefaultString("LATEST_FABRIC_INSTALLER_VERSION", "1.1.0")
+
+	if lv, err := getFabricLoader(); err != nil {
+		LatestFabricLoaderVersion = GetEnvOrDefaultString("LATEST_FABRIC_LOADER_VERSION", "")
+	} else {
+		LatestFabricLoaderVersion = lv[0]
+	}
+
+	if li, err := getFabricInstaller(); err != nil {
+		LatestFabricInstallerVersion = GetEnvOrDefaultString("LATEST_FABRIC_INSTALLER_VERSION", "1.1.0")
+	} else {
+		LatestFabricInstallerVersion = li[0]
+	}
+
 	MinecraftServerPath = GetEnvOrDefaultString("MINECRAFT_SERVER_PATH", "./minecraft_servers")
 
 	NumPlayer = GetEnvOrDefault("NUM", 5)
@@ -88,10 +102,6 @@ func LoadEnv() {
 
 	SetUpSMTP()
 	LoadVanillaServerUrls()
-}
-
-func SetLatestFabricLoader() {
-
 }
 
 func SetUpSMTP() {
@@ -114,4 +124,80 @@ func LoadVanillaServerUrls() {
 	if err := json.Unmarshal(data, &VanillaServerUrl); err != nil {
 		log.Fatalf("JSON 解析失敗: %v", err)
 	}
+}
+
+type InstallerVersion struct {
+	Url     string
+	Maven   string
+	Version string
+	Stable  bool
+}
+type LoaderVersion struct {
+	Separator string
+	Build     int
+	Maven     string
+	Version   string
+	Stable    bool
+}
+
+func getFabricInstaller() ([]string, error) {
+	resp, err := http.Get("https://meta.fabricmc.net/v2/versions/installer")
+
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get Installer versions, status code: %d", resp.StatusCode)
+	}
+
+	var installer []InstallerVersion
+	if err := json.NewDecoder(resp.Body).Decode(&installer); err != nil {
+		return nil, err
+	}
+
+	stableVer := make([]string, len(installer))
+	for i, v := range installer {
+		fmt.Println(v.Version, v.Stable)
+		if v.Stable {
+			stableVer[i] = v.Version
+		}
+	}
+	return stableVer, nil
+}
+
+func getFabricLoader() ([]string, error) {
+	resp, err := http.Get("https://meta.fabricmc.net/v2/versions/loader")
+
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get loader versions, status code: %d", resp.StatusCode)
+	}
+
+	var lv []LoaderVersion
+	if err := json.NewDecoder(resp.Body).Decode(&lv); err != nil {
+		return nil, err
+	}
+	loaders := make([]string, len(lv))
+	for i, v := range lv {
+		if v.Stable {
+			loaders[i] = v.Version
+		}
+	}
+
+	return loaders, nil
+}
+
+func IntiLogger(name string) error {
+	logger, err := NewSysLogger(name, nil, maxLogCount)
+	if err != nil {
+		return err
+	}
+	Logger = logger
+	return nil
 }

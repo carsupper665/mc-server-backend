@@ -555,6 +555,11 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 	}
 
 	serverData, err := model.GetServerByID(userId, sid)
+	if err != nil {
+		logger.Debugf("Add mod error, GetServerByID: %v", err)
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
 
 	if err := service.AddMod(sid, serverData.SystemPath, serverData.ModLoader, serverData.MCVersion, req.ModID, req.VersionID, req.AutoUpdate); err != nil {
 		common.LogError(c.Request.Context(), "install Mod error: "+err.Error())
@@ -562,4 +567,45 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 		return
 	}
 
+	c.JSON(200, gin.H{"message": "mod installed Successfully"})
+}
+
+func (sc *ServerController) DisableMod(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Invalid server ID"})
+		return
+	}
+	modID := c.Param("mod_id")
+	if modID == "" {
+		c.JSON(400, gin.H{"error": "Invalid request"})
+		return
+	}
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+	err = model.IsOwner(userId, serverID)
+	// DB change
+	// DB get mod file
+	modFile := model.ModFileName(serverID, modID)
+	if modFile == "" {
+		c.JSON(500, gin.H{"error": "Mod File Not Found or error"})
+		return
+	}
+	// server modify
+
+	if err := sc.svc.DisableMod(serverID, modFile); err != nil {
+		rid := reqid(c)
+		logger.Errorf("Disable mod error: %v, ReqId: %s", err, rid)
+		c.JSON(500, gin.H{"error": "Failed to disable mod."})
+		return
+	}
+
+	if err := model.ChangeModStatus(serverID, modID, "disable"); err != nil {
+		logger.Errorf("Disable mod error: %v, ReqId: %s", err, reqid)
+		c.JSON(500, gin.H{"error": "DB ERR Failed to disable mod."})
+	}
+	c.JSON(200, gin.H{"message": "mod disabled successfully"})
 }

@@ -99,26 +99,26 @@ func (m *Monitor) sampleOnce() {
 	if mi, err := m.p.MemoryInfo(); err == nil && mi != nil {
 		s.RSS = mi.RSS
 		s.VMS = mi.VMS
-	} else if err != nil {
+	} else {
 		s.Err = joinErr(s.Err, err)
 	}
 
 	if th, err := m.p.NumThreads(); err == nil {
 		s.Threads = th
-	} else if err != nil {
+	} else {
 		s.Err = joinErr(s.Err, err)
 	}
 
 	if st, err := m.p.Status(); err == nil {
 		s.Status = st
-	} else if err != nil {
+	} else {
 		s.Err = joinErr(s.Err, err)
 	}
 
 	if ct, err := m.p.CreateTime(); err == nil {
 		// CreateTime 是毫秒 epoch
 		s.StartedAt = time.UnixMilli(ct)
-	} else if err != nil {
+	} else {
 		s.Err = joinErr(s.Err, err)
 	}
 

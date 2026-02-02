@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,10 +22,14 @@ const (
 	MaxServersPerOwner = 3
 )
 
-var ErrAlreadyRunning = errors.New("server already running")
-var ErrNotFound = errors.New("Server Not Found.")
-var ErrMaxReached = errors.New("User has reached the maximum number of servers")
-var ErrServerRunning = errors.New("Cannot Backup while server is running")
+var (
+	ErrAlreadyRunning  = errors.New("server already running")
+	ErrNotFound        = errors.New("server Not Found")
+	ErrMaxReached      = errors.New("user has reached the maximum number of servers")
+	ErrServerRunning   = errors.New("cannot Backup while server is running")
+	ErrAlreadyDisabled = errors.New("mod is already disabled")
+	ErrAlreadyEnable   = errors.New("mod is already enable")
+)
 
 type Server struct {
 	sid       string
@@ -541,6 +546,13 @@ func (sm *ServerManager) cleanup(sid string) {
 	}
 }
 
+func (sm *ServerManager) isRunning(sid string) bool {
+	sm.mu.RLock()
+	srv, exists := sm.servers[sid]
+	sm.mu.RUnlock()
+	return exists && srv.Status() == "running"
+}
+
 func (sm *ServerManager) DeleteServer(sid, dir string) error {
 	sm.mu.RLock()
 	srv, exists := sm.servers[sid]
@@ -557,3 +569,45 @@ func (sm *ServerManager) DeleteServer(sid, dir string) error {
 	path := dir
 	return os.RemoveAll(path)
 }
+
+func (sm *ServerManager) DisableMod(sid, modPath string) error {
+	if running := sm.isRunning(sid); running {
+		return ErrServerRunning
+	}
+	// rename file to disable
+	ext := strings.ToLower(filepath.Ext(modPath)) // ".disable" vor ".jar"
+	if ext == ".disable" {
+		return ErrAlreadyDisabled // already disable
+	}
+	newPath := modPath + ".disable"
+	if err := os.Rename(modPath, newPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+func (sm *ServerManager) EnableMod(sid, modPath string) error {
+	if running := sm.isRunning(sid); running {
+		return ErrServerRunning
+	}
+
+	// rename file to enable
+	ext := strings.ToLower(filepath.Ext(modPath)) // ".disable" or ".jar"
+	if ext == ".jar" {
+		return ErrAlreadyEnable // already enabled
+	}
+	newName := strings.TrimSuffix(modPath, ext)
+	if err := os.Rename(modPath, newName); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+//func (sm *ServerManager) DeleteMod(sid, modPath string) error {
+//	if running := sm.isRunning(sid); running {
+//		return ErrServerRunning
+//	}
+//
+//}
