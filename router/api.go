@@ -115,6 +115,8 @@ func SetAPIRouter(router *gin.Engine) {
 		serverMod.GET("/update/:server_id", c.UpdateMod)
 		serverMod.GET("/toggle/:server_id", c.ToggleMod) // Enable or disable a mod on the server
 		serverMod.GET("/list/:server_id", c.ListMod)     // Query the list of mods installed on the server
+		serverMod.GET("/job/:job_id", c.GetModInstallJob)
+		serverMod.GET("/subscribe/:job_id", c.SubscribeModInstall)
 	}
 
 }

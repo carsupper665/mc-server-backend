@@ -116,6 +116,30 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 	return nil
 }
 
+func fetchModVersionByID(versionID string) (*ModrinthVersion, error) {
+	if versionID == "" {
+		return nil, fmt.Errorf("version id is empty")
+	}
+
+	url := fmt.Sprintf("https://api.modrinth.com/v2/version/%s", versionID)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	var v ModrinthVersion
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // Get Latest or Specific
 func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string) (*ModrinthVersion, error) {
 	base := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", projectID)

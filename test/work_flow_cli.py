@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import sys
+import threading
+import time
 
 import work_flow_test as wf
 
@@ -274,13 +276,152 @@ def cmd_add_mod(args):
     header(t(args.lang, "title_add_mod"))
     term = wf.HttpTester(verbose=False)
     load_cookies_or_exit(term, args.cookies)
-    status, response = term.add_mod(
+    status, response = term.add_mod_async(
         args.server_id,
         args.mod_id,
         ver_id=args.version_id,
         auto_update=not args.no_auto_update,
     )
-    print_response(status, response)
+    if status != 200 or response is None:
+        print_response(status, response)
+        return
+    try:
+        data = response.json()
+    except Exception:
+        print_response(status, response)
+        return
+
+    job_id = data.get("job_id")
+    if not job_id:
+        print_response(status, response)
+        return
+
+    stream = term.open_mod_job_stream(job_id)
+    if stream is None:
+        print_response(status, response)
+        return
+    if stream.status_code != 200:
+        print_response(stream.status_code, stream)
+        return
+
+    state_lock = threading.Lock()
+    state = {
+        "stage": "queued",
+        "percent": 0,
+        "mod_id": args.mod_id,
+        "mod_name": "",
+        "message": "",
+        "error": "",
+        "done": False,
+        "failed": False,
+    }
+
+    def stage_color(stage: str) -> str:
+        stage = (stage or "").lower()
+        if stage in ("queued", "resolving"):
+            return "lavender"
+        if stage in ("downloading",):
+            return "flamingo"
+        if stage in ("installing", "installed"):
+            return "pink"
+        if stage in ("skipped",):
+            return "fg_muted"
+        if stage in ("completed",):
+            return "rosewater"
+        if stage in ("failed",):
+            return "maroon"
+        return "fg_text"
+
+    def render_line(spin_char: str) -> str:
+        with state_lock:
+            pct = state["percent"] if state["percent"] is not None else 0
+            pct = max(0, min(int(pct), 100))
+            bar_len = 30
+            filled = int(pct / 100 * bar_len)
+            bar = "#" * filled + "-" * (bar_len - filled)
+            stage = state["stage"]
+            mod_name = state["mod_name"] or state["mod_id"] or ""
+            msg = state["message"] or ""
+        stage_text = c(stage, stage_color(stage), bold=True)
+        parts = [f"{spin_char} [{bar}] {pct:3d}% {stage_text}"]
+        if mod_name:
+            parts.append(mod_name)
+        if msg:
+            parts.append(msg)
+        return " | ".join(parts)
+
+    stop_flag = threading.Event()
+
+    def spinner():
+        chars = "|/-\\"
+        idx = 0
+        while not stop_flag.is_set():
+            line = render_line(chars[idx % len(chars)])
+            sys.stdout.write("\r" + line + " " * 10)
+            sys.stdout.flush()
+            idx += 1
+            time.sleep(0.12)
+        line = render_line(chars[idx % len(chars)])
+        sys.stdout.write("\r" + line + " " * 10 + "\n")
+        sys.stdout.flush()
+
+    t_spin = threading.Thread(target=spinner, daemon=True)
+    t_spin.start()
+
+    def iter_sse_events(response):
+        event = {}
+        for raw in response.iter_lines(decode_unicode=True):
+            if raw is None:
+                continue
+            line = raw.strip("\r")
+            if not line:
+                data = event.get("data")
+                event = {}
+                if data:
+                    try:
+                        yield json.loads(data)
+                    except Exception:
+                        continue
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("data:"):
+                event["data"] = line[len("data:") :].strip()
+            elif line.startswith("event:"):
+                event["event"] = line[len("event:") :].strip()
+            elif line.startswith("id:"):
+                event["id"] = line[len("id:") :].strip()
+
+    try:
+        for ev in iter_sse_events(stream):
+            with state_lock:
+                state["stage"] = ev.get("stage", state["stage"])
+                if ev.get("percent") is not None:
+                    state["percent"] = ev.get("percent")
+                if ev.get("mod_id"):
+                    state["mod_id"] = ev.get("mod_id")
+                if ev.get("mod_name"):
+                    state["mod_name"] = ev.get("mod_name")
+                if ev.get("message"):
+                    state["message"] = ev.get("message")
+                if ev.get("error"):
+                    state["error"] = ev.get("error")
+                if state["stage"] in ("completed", "failed"):
+                    state["done"] = True
+                    state["failed"] = state["stage"] == "failed"
+                    break
+    finally:
+        stop_flag.set()
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    if state.get("failed"):
+        err_msg = state.get("error") or "unknown error"
+        print(c("Error:", "maroon", bold=True), c(err_msg, "fg_text"))
+    else:
+        print(c("Done:", "lavender", bold=True), c("mod install completed", "fg_text"))
 
 
 def cmd_del_mod(args):

@@ -107,6 +107,38 @@ class HttpTester:
         response = self.session.post(url, json=post_data)
         return self._res_handler(response)
 
+    def add_mod_async(self, server_id: str, mod_id: str, ver_id: str = "", auto_update: bool = True):
+        if not self.is_sess_exist:
+            if self.verbose:
+                print("please login")
+            return None, None
+        url = f"{BASE_URL}/api/v1/server/mod/add/{server_id}"
+        post_data = {
+            "mod_id": mod_id,
+            "version_id": ver_id,
+            "auto_update": auto_update
+        }
+        response = self.session.post(url, params={"async": "true"}, json=post_data)
+        return self._res_handler(response)
+
+    def get_mod_job(self, job_id: str):
+        if not self.is_sess_exist:
+            if self.verbose:
+                print("please login")
+            return None, None
+        url = f"{BASE_URL}/api/v1/server/mod/job/{job_id}"
+        response = self.session.get(url)
+        return self._res_handler(response)
+
+    def open_mod_job_stream(self, job_id: str):
+        if not self.is_sess_exist:
+            if self.verbose:
+                print("please login")
+            return None
+        url = f"{BASE_URL}/api/v1/server/mod/subscribe/{job_id}"
+        response = self.session.get(url, stream=True, headers={"Accept": "text/event-stream"})
+        return response
+
     def del_mod(self, server_id: str, mod_id: str):
         if not self.is_sess_exist:
             if self.verbose:

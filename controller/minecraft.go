@@ -1,11 +1,15 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"go-backend/common"
 	"go-backend/model"
 	"go-backend/service"
+	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -548,13 +552,140 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 		return
 	}
 
-	if err := service.AddMod(sid, serverData.SystemPath, serverData.ModLoader, serverData.MCVersion, req.ModID, req.VersionID, req.AutoUpdate); err != nil {
+	if c.Query("async") == "true" {
+		job, err := service.EnqueueModInstall(
+			sid,
+			serverData.SystemPath,
+			serverData.ModLoader,
+			serverData.MCVersion,
+			req.ModID,
+			req.VersionID,
+			req.AutoUpdate,
+		)
+		if err != nil {
+			common.LogError(c.Request.Context(), "install Mod error: "+err.Error())
+			c.JSON(500, gin.H{"error": "Failed to add mod."})
+			return
+		}
+		c.JSON(200, gin.H{"job_id": job.ID, "status": job.Status})
+		return
+	}
+
+	if err := service.EnqueueModInstallAndWait(
+		sid,
+		serverData.SystemPath,
+		serverData.ModLoader,
+		serverData.MCVersion,
+		req.ModID,
+		req.VersionID,
+		req.AutoUpdate,
+	); err != nil {
 		common.LogError(c.Request.Context(), "install Mod error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to add mod."})
 		return
 	}
 
 	c.JSON(200, gin.H{"message": "mod installed Successfully"})
+}
+
+func (sc *ServerController) GetModInstallJob(c *gin.Context) {
+	jobID := c.Param("job_id")
+	if jobID == "" {
+		c.JSON(400, gin.H{"error": "job id is required"})
+		return
+	}
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	job, ok := service.GetInstallJobSnapshot(jobID)
+	if !ok {
+		c.JSON(404, gin.H{"error": "job not found"})
+		return
+	}
+	if err := model.IsOwner(userId, job.ServerID); err != nil {
+		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+
+	c.JSON(200, job)
+}
+
+func (sc *ServerController) SubscribeModInstall(c *gin.Context) {
+	jobID := c.Param("job_id")
+	if jobID == "" {
+		c.JSON(400, gin.H{"error": "job id is required"})
+		return
+	}
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	job, ok := service.GetInstallJobSnapshot(jobID)
+	if !ok {
+		c.JSON(404, gin.H{"error": "job not found"})
+		return
+	}
+	if err := model.IsOwner(userId, job.ServerID); err != nil {
+		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+
+	events, history, unsubscribe, err := service.SubscribeInstallEvents(jobID)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "job not found"})
+		return
+	}
+	defer unsubscribe()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(500, gin.H{"error": "streaming unsupported"})
+		return
+	}
+
+	sendEvent := func(ev service.InstallEvent) error {
+		payload, err := json.Marshal(ev)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(c.Writer, "id: %d\n", ev.ID)
+		_, _ = fmt.Fprintf(c.Writer, "event: progress\n")
+		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+		flusher.Flush()
+		return nil
+	}
+
+	for _, ev := range history {
+		_ = sendEvent(ev)
+	}
+
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			_ = sendEvent(ev)
+		case <-heartbeat.C:
+			_, _ = fmt.Fprintf(c.Writer, ": ping\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 func (sc *ServerController) ToggleMod(c *gin.Context) {
