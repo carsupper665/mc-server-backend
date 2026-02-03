@@ -153,14 +153,11 @@ func (s *ServerService) UpdateMod(sid, modID, workDir, modPath, modLoader, gameV
 	return nil
 }
 
-var (
-	fabricLoader = common.LatestFabricLoaderVersion
-)
-
 func CreateServer(oid, serverType, serverVer, loader, installer string) (string, error) {
 	var (
 		serverBasePath  = common.MinecraftServerPath
 		fabricInstaller = common.LatestFabricInstallerVersion
+		fabricLoader    = common.LatestFabricLoaderVersion
 	)
 
 	var idPerFix, url string

@@ -26,6 +26,7 @@ var (
 	BatchUpdateEnabled  = false
 	RelayTimeout        int
 	Logger              *SysLogger
+	UseBetaVersion      bool
 )
 
 func LoadEnv() {
@@ -99,6 +100,8 @@ func LoadEnv() {
 
 	NumPlayer = GetEnvOrDefault("NUM", 5)
 	FoolChance = GetEnvOrDefault("CHANCE", 1000)
+
+	UseBetaVersion = GetEnvOrDefaultBool("UPDATE_BETA", false)
 
 	SetUpSMTP()
 	LoadVanillaServerUrls()

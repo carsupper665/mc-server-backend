@@ -59,9 +59,12 @@ var UpdaterStatus = &status{
 }
 
 type release struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-	Assets  []struct {
+	TagName     string    `json:"tag_name"`
+	HTMLURL     string    `json:"html_url"`
+	Prerelease  bool      `json:"prerelease"`
+	Draft       bool      `json:"draft"`
+	PublishedAt time.Time `json:"published_at"`
+	Assets      []struct {
 		Name               string `json:"name"`
 		Digest             string `json:"digest"`
 		BrowserDownloadURL string `json:"browser_download_url"`
@@ -149,9 +152,17 @@ func CheckForUpdates() error {
 	logger.Info("Checking for updates...")
 
 	// 獲取最新版本資訊
-	r, err := fetchLatestRelease(logger)
-	if err != nil {
-		return err
+	var r *release
+	if !common.UseBetaVersion {
+		r, err = fetchLatestRelease(logger)
+		if err != nil {
+			return err
+		}
+	} else {
+		r, err = fetchLatestBeta(logger)
+		if err != nil {
+			return err
+		}
 	}
 
 	if r.TagName == common.Version+common.Build {
@@ -202,6 +213,54 @@ func fetchLatestRelease(logger *common.SysLogger) (*release, error) {
 	}
 
 	return &r, nil
+}
+
+// fetchLatestBeta 獲取最新 beta 版本資訊
+func fetchLatestBeta(logger *common.SysLogger) (*release, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", repo)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		logger.Error("failed to fetch beta release info: " + err.Error())
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status: %s", resp.Status)
+		logger.Error(err.Error())
+		return nil, err
+	}
+
+	var releases []release
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		logger.Error("failed to decode response: " + err.Error())
+		return nil, err
+	}
+	if len(releases) == 0 {
+		return nil, errors.New("no releases found")
+	}
+
+	var latest *release
+	for i := range releases {
+		r := &releases[i]
+		if r.Draft {
+			continue
+		}
+		if !r.Prerelease && !strings.Contains(strings.ToLower(r.TagName), "beta") {
+			continue
+		}
+		if latest == nil || r.PublishedAt.After(latest.PublishedAt) {
+			latest = r
+		}
+	}
+
+	if latest == nil {
+		return nil, errors.New("no beta release found")
+	}
+
+	return latest, nil
 }
 
 func downloadAndApplyUpdate(url, expectedHash string, logger *common.SysLogger) error {
@@ -350,9 +409,19 @@ func performUpdate(logger *common.SysLogger) error {
 	}
 
 	// 獲取最新版本
-	r, err := fetchLatestRelease(logger)
-	if err != nil {
-		return err
+	var r *release
+	var err error
+
+	if !common.UseBetaVersion {
+		r, err = fetchLatestRelease(logger)
+		if err != nil {
+			return err
+		}
+	} else {
+		r, err = fetchLatestBeta(logger)
+		if err != nil {
+			return err
+		}
 	}
 
 	if r.TagName == common.Version+common.Build {

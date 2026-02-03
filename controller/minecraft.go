@@ -1,5 +1,3 @@
-//controller/minecraft.go
-
 package controller
 
 import (
@@ -8,7 +6,6 @@ import (
 	"go-backend/model"
 	"go-backend/service"
 	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,17 +20,6 @@ func CreateServer(c *gin.Context) {
 	}
 
 	_, uid_str, uid_uint, err := getPayloadAndId(c)
-
-	if strings.TrimSpace(req.FabricLoader) == "" || strings.TrimSpace(req.FabricInstaller) == "" {
-		loader, installer, fetchErr := common.FetchLatestFabricLoaderAndInstaller(req.ServerVer)
-		if fetchErr != nil {
-			common.LogError(c.Request.Context(), "Fetch Fabric Loader Version error: "+fetchErr.Error())
-			c.JSON(500, gin.H{"error": "Failed to fetch latest fabric loader version"})
-			return
-		}
-		req.FabricLoader = loader
-		req.FabricInstaller = installer
-	}
 
 	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
