@@ -5,12 +5,15 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -154,4 +157,129 @@ func copyFile(src, dst string) error {
 		err = os.Chmod(dst, info.Mode())
 	}
 	return err
+}
+
+type ModrinthVersion struct {
+	ID            string               `json:"id"`
+	ProjectID     string               `json:"project_id"`
+	Name          string               `json:"name"`
+	VersionNumber string               `json:"version_number"`
+	VersionType   string               `json:"version_type"`
+	Changelog     string               `json:"changelog"`
+	DatePublished time.Time            `json:"date_published"`
+	DateModified  time.Time            `json:"date_modified"`
+	Downloads     int64                `json:"downloads"`
+	Featured      bool                 `json:"featured"`
+	Dependencies  []ModrinthDependency `json:"dependencies"`
+	Files         []ModrinthFile       `json:"files"`
+	GameVersions  []string             `json:"game_versions"`
+	Loaders       []string             `json:"loaders"`
+}
+
+type ModrinthProject struct {
+	ID                   string    `json:"id"`
+	Slug                 string    `json:"slug"`
+	Title                string    `json:"title"`
+	Description          string    `json:"description"`
+	Body                 string    `json:"body"`
+	Team                 string    `json:"team"`
+	IconURL              string    `json:"icon_url"`
+	BannerURL            string    `json:"banner_url"`
+	Downloads            int64     `json:"downloads"`
+	Categories           []string  `json:"categories"`
+	AdditionalCategories []string  `json:"additional_categories"`
+	Updated              time.Time `json:"updated"`
+}
+
+type ModrinthDependency struct {
+	ProjectID      string `json:"project_id"`
+	VersionID      string `json:"version_id"`
+	DependencyType string `json:"dependency_type"`
+}
+
+type ModrinthFile struct {
+	URL      string            `json:"url"`
+	Filename string            `json:"filename"`
+	Primary  bool              `json:"primary"`
+	Size     int64             `json:"size"`
+	FileType string            `json:"file_type"`
+	Hashes   map[string]string `json:"hashes"`
+}
+
+func FetchLatestModrinthVersion(projectID, loader, gameVersion string) (*ModrinthVersion, error) {
+	base := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", projectID)
+
+	q := url.Values{}
+	if strings.TrimSpace(loader) != "" {
+		q.Set("loaders", fmt.Sprintf(`["%s"]`, strings.ToLower(loader)))
+	}
+	if strings.TrimSpace(gameVersion) != "" {
+		q.Set("game_versions", fmt.Sprintf(`["%s"]`, gameVersion))
+	}
+
+	fullURL := base
+	if len(q) > 0 {
+		fullURL = base + "?" + q.Encode()
+	}
+
+	SysDebug(fmt.Sprintf("fetchLatestModrinthVersion url: %s", fullURL))
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "carsupper665/mc-server-backend (contact: carsuooer665@hgmail.com)")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	var versions []ModrinthVersion
+	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
+		return nil, err
+	}
+
+	if len(versions) == 0 {
+		return nil, errors.New("no compatible version found")
+	}
+
+	return &versions[0], nil
+}
+
+func FetchModrinthProject(modKey string) (*ModrinthProject, []byte, error) {
+	fullURL := fmt.Sprintf("https://api.modrinth.com/v2/project/%s", modKey)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "carsupper665/mc-server-backend (contact: carsuooer665@hgmail.com)")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var project ModrinthProject
+	if err := json.Unmarshal(raw, &project); err != nil {
+		return nil, nil, err
+	}
+
+	return &project, raw, nil
 }

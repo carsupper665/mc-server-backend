@@ -86,8 +86,8 @@ func (s *ServerService) DelServer(sid, workDir string) error {
 	return s.mgr.DeleteServer(sid, workDir)
 }
 
-func (s *ServerService) ListBackups(sid, workDir string) ([]string, error) {
-	return s.mgr.ServerSaveList(sid, workDir)
+func (s *ServerService) ListBackups(workDir string) ([]string, error) {
+	return s.mgr.ServerSaveList(workDir)
 }
 
 func (s *ServerService) DeleteMod(sid, modID, modPath string) error {
@@ -138,6 +138,18 @@ func (s *ServerService) EnableMod(sid, modID, modPath string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (s *ServerService) UpdateMod(sid, modID, workDir, modPath, modLoader, gameVersion string, autoUpdate bool) error {
+	//dbBk, err := model.GetServerMod(sid, modID)
+	//if err != nil {
+	//	return err
+	//}
+	err := s.mgr.UpdateMod(sid, modID, workDir, modPath, modLoader, gameVersion, autoUpdate)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

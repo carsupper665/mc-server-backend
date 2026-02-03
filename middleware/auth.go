@@ -68,12 +68,8 @@ func DebugMode() gin.HandlerFunc {
 func UserAgentFilter() gin.HandlerFunc {
 	// 定義允許的瀏覽器關鍵字
 	allowed := []string{
-		"chrome",
-		"firefox",
-		"safari",
-		"opera",
-		"mozilla",
-		"mpmc client ua",
+		"mpmc-web-ua-v",
+		"mpmc-client-ua",
 	}
 
 	return func(c *gin.Context) {

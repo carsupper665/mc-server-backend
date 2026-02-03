@@ -1,8 +1,10 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"go-backend/common"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -265,6 +267,296 @@ func ListMods(serverID string) ([]ServerMod, error) {
 func DeleteMod(serverID, modID string) error {
 	return DB.Where("server_id = ? AND mod_id = ?", serverID, modID).
 		Delete(&ServerMod{}).Error
+}
+
+func IsUptodate(sid, modID string) (IsLast bool, VerId string, err error) {
+	var serverMod ServerMod
+
+	// 版本 最後更新時間 大於3天就去Modrinth更新(更新mod, modversion 兩個表) 再取 Modrinth 的 版本號1
+	if err := DB.Where("server_id = ? AND mod_id = ?", sid, modID).
+		Preload("Version").Preload("Mod").Preload("Server").
+		First(&serverMod).Error; err != nil {
+		return false, "", err
+	}
+	latestCheckTime := serverMod.Version.VersionUpdatedAt
+
+	// is latest and latest check < 3 days, return
+	if (serverMod.VersionID == serverMod.Version.VersionID) && !(serverMod.UpdatedAt.IsZero() || time.Since(latestCheckTime) > 72*time.Hour) {
+		return true, serverMod.Version.VersionID, nil
+	}
+
+	// check db mod info is lasest
+	if serverMod.UpdatedAt.IsZero() || time.Since(latestCheckTime) > 72*time.Hour {
+		// lv == latest version
+		lv, err := common.FetchLatestModrinthVersion(modID, serverMod.Server.ModLoader, serverMod.Server.MCVersion)
+		if err != nil {
+			VerId = serverMod.Version.VersionID
+			logger.Errorf("Failed to fetch latest Modrinth version: %v", err)
+		} else {
+			if err := upsertModVersion(modID, lv); err != nil {
+				logger.Errorf("Failed to upsert Modrinth version: %v", err)
+			}
+			// lv.id == version id
+			VerId = lv.ID
+		}
+
+		if project, raw, err := common.FetchModrinthProject(modID); err == nil {
+			if err := upsertModProject(modID, project, raw); err != nil {
+				logger.Errorf("Failed to upsert Modrinth project: %v", err)
+			}
+		}
+	} else {
+		latest, err := pickLatestCachedVersion(modID, serverMod.Server.MCVersion)
+		if err != nil {
+			logger.Errorf("Failed to pick latest Modrinth version: %v", err)
+			return false, "", err
+		}
+		VerId = latest.VersionID
+	}
+	IsLast = serverMod.VersionID == VerId
+
+	return IsLast, VerId, nil
+	//stale := serverMod.UpdateCheckedAt.IsZero() || time.Since(serverMod.UpdateCheckedAt) > 72*time.Hour
+	//if stale {
+	//	version, err := common.FetchLatestModrinthVersion(modID, serverMod.Server.ModLoader, serverMod.Server.MCVersion)
+	//	if err != nil {
+	//		return false, "", err
+	//	}
+	//	if err := upsertModVersion(modID, version); err != nil {
+	//		return false, "", err
+	//	}
+	//	project, raw, err := common.FetchModrinthProject(modID)
+	//	if err != nil {
+	//		return false, "", err
+	//	}
+	//	if err := upsertModProject(modID, project, raw); err != nil {
+	//		return false, "", err
+	//	}
+	//	VerId = version.ID
+	//} else {
+	//	VerId = serverMod.LatestVersionID
+	//	if VerId == "" {
+	//		latest, err := pickLatestCachedVersion(modID, serverMod.Server.MCVersion)
+	//		if err != nil {
+	//			return false, "", err
+	//		}
+	//		VerId = latest.VersionID
+	//	}
+	//}
+	//
+	//IsLast = serverMod.VersionID == VerId
+	//if err := DB.Model(&ServerMod{}).
+	//	Where("server_id = ? AND mod_id = ?", sid, modID).
+	//	Updates(map[string]any{
+	//		"has_update":        !IsLast,
+	//		"latest_version_id": VerId,
+	//		"update_checked_at": time.Now(),
+	//	}).Error; err != nil {
+	//	return IsLast, VerId, err
+	//}
+	//
+	//return IsLast, VerId, nil
+}
+
+func upsertModProject(modKey string, project *common.ModrinthProject, raw []byte) error {
+	if project == nil {
+		return errors.New("project is nil")
+	}
+
+	categories, err := marshalJSON(project.Categories)
+	if err != nil {
+		return err
+	}
+	tags, err := marshalJSON(project.AdditionalCategories)
+	if err != nil {
+		return err
+	}
+
+	rawData := string(raw)
+	if rawData == "" {
+		if data, err := json.Marshal(project); err == nil {
+			rawData = string(data)
+		}
+	}
+
+	mod := Mod{
+		ModID:            modKey,
+		Slug:             project.Slug,
+		Name:             project.Title,
+		Summary:          project.Description,
+		Description:      project.Body,
+		Author:           "",
+		AuthorID:         project.Team,
+		IconURL:          project.IconURL,
+		BannerURL:        project.BannerURL,
+		Downloads:        project.Downloads,
+		Categories:       categories,
+		Tags:             tags,
+		ModrinthData:     rawData,
+		ProjectUpdatedAt: project.Updated,
+		LastSynced:       time.Now(),
+		SyncStatus:       "success",
+	}
+
+	_, err = UpsertMod(&mod)
+	return err
+}
+
+func upsertModVersion(modKey string, version *common.ModrinthVersion) error {
+	if version == nil {
+		return errors.New("version is nil")
+	}
+
+	filesJSON, err := marshalJSON(version.Files)
+	if err != nil {
+		return err
+	}
+	depsJSON, err := marshalJSON(version.Dependencies)
+	if err != nil {
+		return err
+	}
+	gameVersionsJSON, err := marshalJSON(version.GameVersions)
+	if err != nil {
+		return err
+	}
+
+	primaryFile, _ := selectModFile(version.Files)
+	modVersion := ModVersion{
+		VersionID:        version.ID,
+		ModID:            version.ProjectID,
+		VersionNumber:    version.VersionNumber,
+		VersionName:      version.Name,
+		VersionType:      version.VersionType,
+		Changelog:        version.Changelog,
+		GameVersions:     gameVersionsJSON,
+		Files:            filesJSON,
+		Dependencies:     depsJSON,
+		Featured:         version.Featured,
+		Downloads:        version.Downloads,
+		Published:        pickPublishedAt(version),
+		VersionUpdatedAt: pickVersionUpdatedAt(version),
+	}
+
+	if primaryFile != nil {
+		modVersion.PrimaryFile = primaryFile.Filename
+		modVersion.DownloadURL = primaryFile.URL
+		modVersion.FileSize = primaryFile.Size
+		modVersion.FileHash = pickFileHash(primaryFile)
+	}
+
+	_, err = UpsertModVersion(&modVersion)
+	return err
+}
+
+func pickLatestCachedVersion(modID, gameVersion string) (*ModVersion, error) {
+	var versions []ModVersion
+	if err := DB.
+		Where("mod_id = ?", modID).
+		Order("version_updated_at desc").
+		Order("published desc").
+		Find(&versions).Error; err != nil {
+		return nil, err
+	}
+
+	if len(versions) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	if strings.TrimSpace(gameVersion) == "" {
+		return &versions[0], nil
+	}
+
+	for i := range versions {
+		if versionHasGameVersion(&versions[i], gameVersion) {
+			return &versions[i], nil
+		}
+	}
+
+	return &versions[0], nil
+}
+
+func versionHasGameVersion(version *ModVersion, gameVersion string) bool {
+	if version == nil || strings.TrimSpace(gameVersion) == "" {
+		return true
+	}
+	var versions []string
+	if err := json.Unmarshal([]byte(version.GameVersions), &versions); err != nil {
+		return true
+	}
+	if len(versions) == 0 {
+		return true
+	}
+	for _, v := range versions {
+		if v == gameVersion {
+			return true
+		}
+	}
+	return false
+}
+
+func selectModFile(files []common.ModrinthFile) (*common.ModrinthFile, error) {
+	if len(files) == 0 {
+		return nil, errors.New("mod file list is empty")
+	}
+	for i := range files {
+		if files[i].Primary {
+			return &files[i], nil
+		}
+	}
+	return &files[0], nil
+}
+
+func pickPublishedAt(version *common.ModrinthVersion) time.Time {
+	if version == nil {
+		return time.Time{}
+	}
+	if !version.DatePublished.IsZero() {
+		return version.DatePublished
+	}
+	return version.DateModified
+}
+
+func pickVersionUpdatedAt(version *common.ModrinthVersion) time.Time {
+	if version == nil {
+		return time.Time{}
+	}
+	if !version.DateModified.IsZero() {
+		return version.DateModified
+	}
+	return version.DatePublished
+}
+
+func pickFileHash(file *common.ModrinthFile) string {
+	if file == nil {
+		return ""
+	}
+	if len(file.Hashes) == 0 {
+		return ""
+	}
+	if hash, ok := file.Hashes["sha512"]; ok {
+		return hash
+	}
+	if hash, ok := file.Hashes["sha1"]; ok {
+		return hash
+	}
+	for _, hash := range file.Hashes {
+		return hash
+	}
+	return ""
+}
+
+func marshalJSON(value any) (string, error) {
+	if value == nil {
+		return "[]", nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	if string(data) == "null" {
+		return "[]", nil
+	}
+	return string(data), nil
 }
 
 func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) error {

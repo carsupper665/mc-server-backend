@@ -129,7 +129,7 @@ func (sc *ServerController) ListServerBackup(c *gin.Context) {
 		return
 	}
 
-	backups, err := sc.svc.ListBackups(serverInfo.ServerID, serverInfo.SystemPath)
+	backups, err := sc.svc.ListBackups(serverInfo.SystemPath)
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "ListBackups error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to list backups"})
@@ -724,4 +724,52 @@ func (sc *ServerController) DelMod(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "mod deleted successfully"})
+}
+
+func (sc *ServerController) UpdateMod(c *gin.Context) {
+	serverID := c.Param("server_id")
+	if serverID == "" {
+		c.JSON(400, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	modID := c.Query("mod_id")
+	if modID == "" {
+		c.JSON(400, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	_, _, userId, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	err = model.IsOwner(userId, serverID)
+	if err != nil {
+		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+	serverData, err := model.GetServerByID(userId, serverID)
+	if err != nil {
+		logger.Errorf("Update mod error, \n at model GetServerByID %v", err)
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+	modInf, err := model.GetServerMod(serverID, modID)
+	if err != nil {
+		logger.Errorf("Update mod error, \n at model GetServerMod %v", err)
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+
+	modPath := filepath.Join(serverData.SystemPath, "mods", modInf.Filename)
+	err = sc.svc.UpdateMod(serverID, modID, serverData.SystemPath, modPath, serverData.ModLoader, serverData.MCVersion, modInf.AutoUpdate)
+	if err != nil {
+		logger.Errorf("Update mod error, \n at service UpdateMod %v", err)
+		c.JSON(500, gin.H{"error": "Failed to update mod."})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "mod updated successfully"})
 }

@@ -4,7 +4,7 @@ BASE_URL = "http://localhost:8080"
 
 class HttpTester:
     def __init__(self, session: requests.Session = None, verbose: bool = True):
-        self.ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
+        self.ua = "yyanc9-cli"
         self.session = requests.Session() if session is None else session
         self.is_sess_exist = session is not None
         self.session.headers.update({"Content-Type": "application/json"})
@@ -134,6 +134,16 @@ class HttpTester:
             return None, None
         url = f"{BASE_URL}/api/v1/server/mod/list/{server_id}"
         response = self.session.get(url,)
+        return self._res_handler(response)
+
+    def update_mod(self, server_id: str, mod_id: str):
+        if not self.is_sess_exist:
+            if self.verbose:
+                print("please login")
+            return None, None
+        url = f"{BASE_URL}/api/v1/server/mod/update/{server_id}"
+        params = {"mod_id": mod_id}
+        response = self.session.get(url, params=params)
         return self._res_handler(response)
 
     def load_cookies(self, file_path: str = "cookies.json"):

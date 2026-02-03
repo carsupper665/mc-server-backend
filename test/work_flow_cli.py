@@ -21,6 +21,27 @@ PALETTE = {
 }
 
 
+def enable_windows_ansi():
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        if handle in (0, -1):
+            return
+        mode = ctypes.c_uint()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)) == 0:
+            return
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except Exception:
+        return
+
+
+enable_windows_ansi()
+
+
 TRANSLATIONS = {
     "zh": {
         "cli_desc": "工作流程 CLI（使用 work_flow_test.py 內建函式）",
@@ -42,6 +63,7 @@ TRANSLATIONS = {
         "cmd_add_mod": "新增模組",
         "cmd_del_mod": "刪除模組",
         "cmd_toggle_mod": "切換模組啟用/停用",
+        "cmd_update_mod": "更新模組",
         "cmd_list_mods": "列出模組",
         "cmd_rollback": "回復備份",
         "help_username": "使用者名稱",
@@ -64,6 +86,7 @@ TRANSLATIONS = {
         "title_add_mod": "新增模組",
         "title_del_mod": "刪除模組",
         "title_toggle_mod": "切換模組",
+        "title_update_mod": "更新模組",
         "title_list_mods": "模組列表",
         "title_rollback": "回復備份",
         "desc_login": "登入並取得 session cookies\n必填：username, password",
@@ -74,6 +97,7 @@ TRANSLATIONS = {
         "desc_add_mod": "新增模組到伺服器",
         "desc_del_mod": "從伺服器移除模組",
         "desc_toggle_mod": "切換模組啟用/停用",
+        "desc_update_mod": "更新伺服器模組",
         "desc_list_mods": "列出伺服器模組",
         "desc_rollback": "回復伺服器備份",
     },
@@ -97,6 +121,7 @@ TRANSLATIONS = {
         "cmd_add_mod": "Add mod",
         "cmd_del_mod": "Delete mod",
         "cmd_toggle_mod": "Toggle mod enable/disable",
+        "cmd_update_mod": "Update mod",
         "cmd_list_mods": "List mods",
         "cmd_rollback": "Rollback backup",
         "help_username": "Username",
@@ -119,6 +144,7 @@ TRANSLATIONS = {
         "title_add_mod": "Add Mod",
         "title_del_mod": "Delete Mod",
         "title_toggle_mod": "Toggle Mod",
+        "title_update_mod": "Update Mod",
         "title_list_mods": "Mod List",
         "title_rollback": "Rollback",
         "desc_login": "Login and fetch session cookies\nRequired: username, password",
@@ -129,6 +155,7 @@ TRANSLATIONS = {
         "desc_add_mod": "Add mod to server",
         "desc_del_mod": "Remove mod from server",
         "desc_toggle_mod": "Toggle mod enable/disable",
+        "desc_update_mod": "Update server mod",
         "desc_list_mods": "List server mods",
         "desc_rollback": "Rollback server backup",
     },
@@ -274,6 +301,15 @@ def cmd_toggle_mod(args):
     print_response(status, response)
 
 
+def cmd_update_mod(args):
+    set_base_url(args.base_url)
+    header(t(args.lang, "title_update_mod"))
+    term = wf.HttpTester(verbose=False)
+    load_cookies_or_exit(term, args.cookies)
+    status, response = term.update_mod(args.server_id, args.mod_id)
+    print_response(status, response)
+
+
 def cmd_list_mods(args):
     set_base_url(args.base_url)
     header(t(args.lang, "title_list_mods"))
@@ -397,6 +433,8 @@ def command_reference(
     lines.append(c("  del-mod <server_id> <mod_id>", "fg_subtext0"))
     lines.append(c(t(lang, "cmd_toggle_mod"), "pink", bold=True))
     lines.append(c("  toggle-mod <server_id> <mod_id>", "fg_subtext0"))
+    lines.append(c(t(lang, "cmd_update_mod"), "pink", bold=True))
+    lines.append(c("  update-mod <server_id> <mod_id>", "fg_subtext0"))
     lines.append(c(t(lang, "cmd_list_mods"), "pink", bold=True))
     lines.append(c("  list-mods <server_id>", "fg_subtext0"))
     lines.append(c(t(lang, "cmd_rollback"), "pink", bold=True))
@@ -582,6 +620,16 @@ def build_parser(
     toggle_mod.add_argument("server_id", help=help_text(lang, "help_server_id"))
     toggle_mod.add_argument("mod_id", help=help_text(lang, "help_mod_id"))
     toggle_mod.set_defaults(func=cmd_toggle_mod)
+
+    update_mod = sub.add_parser(
+        "update-mod",
+        help=help_text(lang, "cmd_update_mod", "mauve"),
+        description=help_text(lang, "desc_update_mod", "fg_text"),
+        formatter_class=FancyFormatter,
+    )
+    update_mod.add_argument("server_id", help=help_text(lang, "help_server_id"))
+    update_mod.add_argument("mod_id", help=help_text(lang, "help_mod_id"))
+    update_mod.set_defaults(func=cmd_update_mod)
 
     list_mods = sub.add_parser(
         "list-mods",

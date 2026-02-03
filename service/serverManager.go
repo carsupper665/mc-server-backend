@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"go-backend/common"
+	"go-backend/model"
 	"io"
 	"os"
 	"os/exec"
@@ -23,12 +24,14 @@ const (
 )
 
 var (
-	ErrAlreadyRunning  = errors.New("server already running")
-	ErrNotFound        = errors.New("server Not Found")
-	ErrMaxReached      = errors.New("user has reached the maximum number of servers")
-	ErrServerRunning   = errors.New("cannot Backup while server is running")
-	ErrAlreadyDisabled = errors.New("mod is already disabled")
-	ErrAlreadyEnable   = errors.New("mod is already enable")
+	ErrAlreadyRunning     = errors.New("server already running")
+	ErrNotFound           = errors.New("server Not Found")
+	ErrMaxReached         = errors.New("user has reached the maximum number of servers")
+	ErrServerRunning      = errors.New("cannot Backup while server is running")
+	ErrAlreadyDisabled    = errors.New("mod is already disabled")
+	ErrAlreadyEnable      = errors.New("mod is already enable")
+	ErrServerBusy         = errors.New("server is busy")
+	ErrModMetadataMissing = errors.New("mod file metadata missing")
 )
 
 type Server struct {
@@ -265,7 +268,7 @@ func NewServerManager(ports []int) *ServerManager {
 	return sm
 }
 
-func (sm *ServerManager) ServerSaveList(sid, workDir string) ([]string, error) {
+func (sm *ServerManager) ServerSaveList(workDir string) ([]string, error) {
 	// just read dir, lock not needed
 	list := make([]string, 0)
 
@@ -576,7 +579,14 @@ func (sm *ServerManager) DisableMod(sid, modPath string) error {
 	}
 	// rename file to disable
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	srv, exists := sm.servers[sid]
+	sm.mu.Unlock()
+	if exists {
+		if ok := srv.mu.TryRLock(); !ok {
+			return ErrServerBusy
+		}
+		defer srv.mu.RUnlock()
+	}
 	ext := strings.ToLower(filepath.Ext(modPath)) // ".disable" vor ".jar"
 	if ext == ".disable" {
 		return ErrAlreadyDisabled // already disable
@@ -613,9 +623,73 @@ func (sm *ServerManager) DeleteMod(sid, modPath string) error {
 	}
 
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	srv, exists := sm.servers[sid]
+	sm.mu.Unlock()
+	if exists {
+		if ok := srv.mu.TryRLock(); !ok {
+			return ErrServerBusy
+		}
+		defer srv.mu.RUnlock()
+	}
+
 	if err := os.Remove(modPath); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, gameVersion string, autoUpdate bool) error {
+	// TODO 類 transaction 機制 錯誤要負責復原所有東西 回到發生前
+	if running := sm.isRunning(sid); running {
+		return ErrServerRunning
+	}
+	sm.mu.Lock()
+	srv, exists := sm.servers[sid]
+	sm.mu.Unlock()
+	if exists {
+		if ok := srv.mu.TryRLock(); !ok {
+			return ErrServerBusy
+		}
+		defer srv.mu.RUnlock()
+	}
+
+	oldModPath := oldModFile
+	// remove old
+	if err := os.Rename(oldModPath, oldModPath+".old"); err != nil {
+		return err
+	}
+
+	isLatest, verId, err := model.IsUptodate(sid, modId)
+	if err != nil {
+		return err
+	}
+
+	if isLatest {
+		return nil
+	}
+
+	newModInfo, err := getLatestOrSpecific(modId, modLoader, gameVersion, verId)
+	if err != nil {
+		return err
+	}
+
+	file, err := selectModFile(newModInfo.Files)
+	if err != nil {
+		return err
+	}
+
+	// download mod to work dir
+	newFile, err := modDownload(*file, workDir)
+	if err != nil {
+		return err
+	}
+
+	//update db
+	if err := model.AddModToServer(sid, modId, newModInfo.ID, oldModFile, autoUpdate); err != nil {
+		_ = os.Remove(newFile)
+		_ = os.Rename(oldModPath+".old", oldModPath)
+		return err
+	}
+
 	return nil
 }

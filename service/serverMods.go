@@ -19,7 +19,7 @@ import (
 
 // ModrinthVersion API 回應結構
 type ModrinthVersion struct {
-	ID            string               `json:"id"`
+	ID            string               `json:"id"` // version id
 	ProjectID     string               `json:"project_id"`
 	Name          string               `json:"name"`
 	VersionNumber string               `json:"version_number"`
@@ -99,9 +99,6 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 	file, err := selectModFile(modInf.Files)
 	if err != nil {
 		return err
-	}
-	if file.URL == "" || file.Filename == "" {
-		return errors.New("mod file metadata missing")
 	}
 
 	// download mod to work dir
@@ -407,6 +404,10 @@ func marshalJSON(value any) (string, error) {
 }
 
 func modDownload(file ModrinthFile, workDir string) (string, error) {
+
+	if file.URL == "" || file.Filename == "" {
+		return "", ErrModMetadataMissing
+	}
 
 	modsDir := filepath.Join(workDir, "mods")
 	if err := os.MkdirAll(modsDir, 0755); err != nil {
