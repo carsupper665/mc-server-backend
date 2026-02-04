@@ -38,4 +38,3 @@ build/
 AGENTS.md
 ./test/cookies.json
 cookies.json
-./test/__pycache__
