@@ -3,8 +3,6 @@ import { createDiscreteApi } from 'naive-ui';
 import { sanitizeErrorMessage } from '../utils/errorMapping';
 import { triggerBackoff, resetBackoff } from '../composables/useRateLimitGuard';
 
-const BASE_API_URL = import.meta.env.VITE_BASE_API_URL || '';
-
 // 建立獨立的 message API (可在非 Vue 元件中使用)
 const { message } = createDiscreteApi(['message'], {
     configProviderProps: {
@@ -38,6 +36,7 @@ const api = axios.create({
     withCredentials: true,
 });
 
+api.defaults.headers.common['C-MPMC-WEB-Header'] = 'mpmc-web-ua-v1';
 // Response interceptor
 api.interceptors.response.use(
     (response) => {
@@ -90,7 +89,7 @@ api.interceptors.response.use(
             // 網路錯誤
             console.error('Backend connection refused. Please ensure the backend server is running.');
             if (!isSilent) {
-                message.error('無法連線至伺服器，請確認後端服務已啟動');
+                message.error('無法連線至伺服器');
             }
         }
 

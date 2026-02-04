@@ -48,19 +48,28 @@ activityLog.init();
 // LocalStorage key 用於持久化指令歷史
 const COMMAND_HISTORY_KEY = `mc_cmd_history_`;
 
-// 從 server ID 解析伺服器類型
-const parseServerType = id => {
-  if (id.startsWith('mcsfv')) return 'Fabric';
-  if (id.startsWith('mcsvv')) return 'Vanilla';
-  return 'Unknown';
-};
-
 const server = ref({
-  id: props.id,
-  display_name: props.id, // 使用 ID 作為預設名稱
   status: 'Checking...',
-  type: parseServerType(props.id),
 });
+
+const serverDetails = ref(null);
+
+const displayName = computed(() => serverDetails.value?.display_name || '');
+const displayId = computed(() => serverDetails.value?.server_id || '');
+const displayPlatform = computed(() => serverDetails.value?.mod_loader || '');
+
+const fetchServerInfo = async () => {
+  try {
+    const res = await api.get(`/api/v1/server/details/${props.id}`);
+    const detail = res?.server || res;
+    if (!detail || !detail.server_id) {
+      return;
+    }
+    serverDetails.value = detail;
+  } catch (err) {
+    console.error('Failed to fetch server details:', err);
+  }
+};
 
 // 使用 computed 處理狀態比對（大小寫不敏感）
 const isRunning = computed(() => {
@@ -134,7 +143,7 @@ const handleStart = async () => {
     await api.post(`/mc-api/a/start/${props.id}`);
     message.success('正在啟動伺服器...');
     // 記錄活動
-    activityLog.logServerStart(props.id, server.value.display_name);
+    activityLog.logServerStart(props.id, displayName.value);
     // 切換至活躍輪詢模式
     smartPolling?.enterActiveMode();
   } catch (err) {
@@ -163,7 +172,7 @@ const handleStop = async () => {
     await api.post(`/mc-api/a/stop/${props.id}`);
     message.success('正在停止伺服器...');
     // 記錄活動
-    activityLog.logServerStop(props.id, server.value.display_name);
+    activityLog.logServerStop(props.id, displayName.value);
     // 切換至活躍輪詢模式
     smartPolling?.enterActiveMode();
   } catch (err) {
@@ -205,8 +214,8 @@ const fetchProperties = async () => {
 const saveProperties = async () => {
   propertiesSaving.value = true;
   try {
-    await api.post(`/mc-api/a/property/${props.id}`, {
-      content: propertiesContent.value,
+    await api.post(`/mc-api/a/property/upload/${props.id}`, {
+      texts: propertiesContent.value,
     });
     message.success('設定已儲存');
   } catch (err) {
@@ -261,6 +270,8 @@ onMounted(() => {
   // 載入持久化的指令歷史 - 移至 ServerConsole
   // loadCommandHistory();
 
+  fetchServerInfo();
+
   // 初始化智慧輪詢
   smartPolling = useSmartPolling(fetchServerDetail, {
     idleInterval: 12000, // 閒置模式: 12 秒
@@ -289,8 +300,8 @@ onMounted(() => {
       <div class="server-header">
         <n-space justify="space-between" align="center">
           <n-space align="baseline">
-            <h2 class="title">{{ server.display_name }}</h2>
-            <n-text depth="3" class="id-text">{{ server.id }}</n-text>
+            <h2 class="title">{{ displayName }}</h2>
+            <n-text depth="3" class="id-text">{{ displayId }}</n-text>
           </n-space>
 
           <n-space>
@@ -337,7 +348,7 @@ onMounted(() => {
                 </div>
                 <div class="info-item">
                   <n-text depth="3">PLATFORM</n-text>
-                  <n-text strong>{{ server.type }}</n-text>
+                  <n-text strong>{{ displayPlatform }}</n-text>
                 </div>
               </n-space>
             </n-card>
@@ -358,13 +369,36 @@ onMounted(() => {
       </n-grid>
 
       <!-- 還原確認 Modal -->
-
+      <!-- Tab 切換 -->
+      <div class="tab-switcher">
+        <n-button
+          :type="activeTab === 'console' ? 'primary' : 'default'"
+          ghost
+          @click="handleTabChange('console')"
+        >
+          CONSOLE
+        </n-button>
+        <n-button
+          :type="activeTab === 'backups' ? 'primary' : 'default'"
+          ghost
+          @click="handleTabChange('backups')"
+        >
+          BACKUPS
+        </n-button>
+        <n-button
+          :type="activeTab === 'properties' ? 'primary' : 'default'"
+          ghost
+          @click="handleTabChange('properties')"
+        >
+          PROPERTIES
+        </n-button>
+      </div>
 
       <!-- Backups Tab -->
       <ServerBackups
         v-if="activeTab === 'backups'"
         :server-id="props.id"
-        :server-name="server.display_name"
+        :server-name="displayName"
         :is-server-running="isRunning"
         class="fade-in-up"
         @recovery-started="smartPolling?.enterActiveMode()"
@@ -406,30 +440,7 @@ onMounted(() => {
         </template>
       </n-card>
 
-      <!-- Tab 切換 -->
-      <div class="tab-switcher">
-        <n-button
-          :type="activeTab === 'console' ? 'primary' : 'default'"
-          ghost
-          @click="handleTabChange('console')"
-        >
-          CONSOLE
-        </n-button>
-        <n-button
-          :type="activeTab === 'backups' ? 'primary' : 'default'"
-          ghost
-          @click="handleTabChange('backups')"
-        >
-          BACKUPS
-        </n-button>
-        <n-button
-          :type="activeTab === 'properties' ? 'primary' : 'default'"
-          ghost
-          @click="handleTabChange('properties')"
-        >
-          PROPERTIES
-        </n-button>
-      </div>
+      
     </n-space>
   </div>
 </template>

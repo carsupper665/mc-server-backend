@@ -197,7 +197,11 @@ const columns = [
           size: 'small',
           ghost: true,
           type: 'primary',
-          onClick: () => router.push(`/servers/${row.server_id}`)
+          onClick: () => router.push({
+            name: 'ServerDetail',
+            params: { id: row.server_id },
+            query: { display_name: row.display_name}
+          })
         },
         { default: () => '管理' }
       );

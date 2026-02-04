@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { NCard, NTag, NSpace, NIcon, NAvatar, NText, NEllipsis } from 'naive-ui';
-import { DownloadOutlined, HeartOutlined } from '@vicons/antd';
+import { DownloadOutlined, HeartOutlined, PlusOutlined } from '@vicons/antd';
 import { formatDownloads } from '../api/modrinth';
 
 const props = defineProps({
@@ -11,7 +11,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['click']);
+const emit = defineEmits(['click', 'add']);
 
 // 格式化下載數
 const downloads = computed(() => formatDownloads(props.mod.downloads || 0));
@@ -42,6 +42,11 @@ const latestVersion = computed(() => {
 const handleClick = () => {
   emit('click', props.mod);
 };
+
+const handleAdd = (event) => {
+  event.stopPropagation();
+  emit('add', props.mod);
+};
 </script>
 
 <template>
@@ -51,6 +56,9 @@ const handleClick = () => {
     :bordered="false"
     @click="handleClick"
   >
+    <button class="add-button" type="button" @click.stop="handleAdd" aria-label="Add mod">
+      <n-icon :size="18"><PlusOutlined /></n-icon>
+    </button>
     <div class="mod-content">
       <n-avatar
         :src="mod.icon_url"
@@ -121,12 +129,44 @@ const handleClick = () => {
   border-radius: 12px;
   transition: all 0.3s ease;
   cursor: pointer;
+  position: relative;
 }
 
 .mod-card:hover {
   border-color: #18a058;
   box-shadow: 0 8px 24px rgba(24, 160, 88, 0.15);
   transform: translateY(-4px);
+}
+
+.add-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: none;
+  background: #18a058;
+  color: #0b0b0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 8px 18px rgba(24, 160, 88, 0.25);
+  cursor: pointer;
+  pointer-events: none;
+}
+
+.add-button:hover {
+  filter: brightness(1.1);
+}
+
+.mod-card:hover .add-button {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
 }
 
 .mod-content {

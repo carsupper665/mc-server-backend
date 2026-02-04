@@ -29,7 +29,7 @@ const METRICS_HISTORY_MAX = 30;
 const recentActivities = computed(() => {
   return activityLog.recentActivities(10);
 });
-
+// TODO: 重寫這個vibe shit
 // 更新走勢圖數據
 const updateMetrics = () => {
   const cpu = Math.round(20 + Math.random() * 40); // 模擬 CPU (20-60%)

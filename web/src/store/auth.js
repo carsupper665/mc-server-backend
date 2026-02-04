@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia';
 import api from '../api';
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isEmail = (value) => emailPattern.test(String(value || '').trim());
+
 /**
  * 認證 Store
  * 
@@ -24,7 +27,10 @@ export const useAuthStore = defineStore('auth', {
         async login(username, password) {
             this.loading = true;
             try {
-                const res = await api.post('/Authentication/login', { username, password });
+                const payload = isEmail(username)
+                    ? { email: username, password }
+                    : { username, password };
+                const res = await api.post('/Authentication/login', payload);
 
                 // If backend returns 202, verification is needed
                 if (res.message && res.message.includes('verification code sent')) {

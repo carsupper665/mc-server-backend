@@ -9,7 +9,7 @@ import { searchMods, getGameVersions } from '../api/modrinth';
 import ModCard from './ModCard.vue';
 
 const message = useMessage();
-const emit = defineEmits(['select-mod']);
+const emit = defineEmits(['select-mod', 'add-mod']);
 
 // 搜尋狀態
 const query = ref('');
@@ -112,6 +112,10 @@ const handleModClick = (mod) => {
   window.open(`https://modrinth.com/mod/${mod.slug}`, '_blank');
 };
 
+const handleModAdd = (mod) => {
+  emit('add-mod', mod);
+};
+
 // 監聽過濾器變化
 watch([selectedLoaders, selectedVersion, sortBy], () => {
   currentPage.value = 1;
@@ -190,6 +194,7 @@ onMounted(() => {
           :key="mod.project_id"
           :mod="mod"
           @click="handleModClick"
+          @add="handleModAdd"
         />
       </div>
       

@@ -1,6 +1,10 @@
 <script setup>
 import { NConfigProvider, NGlobalStyle, darkTheme, NMessageProvider, NDialogProvider } from 'naive-ui';
 import { zhTW, dateZhTW } from 'naive-ui';
+import ModInstallProgress from './components/ModInstallProgress.vue';
+import { useModInstallStore } from './store/modInstall';
+
+const modInstallStore = useModInstallStore();
 </script>
 
 <template>
@@ -8,6 +12,7 @@ import { zhTW, dateZhTW } from 'naive-ui';
     <n-message-provider>
       <n-dialog-provider>
         <router-view />
+        <ModInstallProgress :jobs="modInstallStore.jobs" />
       </n-dialog-provider>
     </n-message-provider>
     <n-global-style />

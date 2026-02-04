@@ -26,7 +26,10 @@ const routes = [
                 path: 'servers/:id',
                 name: 'ServerDetail',
                 component: () => import('../views/ServerDetailView.vue'),
-                props: true
+                props: route => ({
+                    id: route.params.id,
+                    display_name: route.query.display_name
+                })
             },
             {
                 path: 'mods',
