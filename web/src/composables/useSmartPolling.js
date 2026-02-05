@@ -22,6 +22,7 @@ export function useSmartPolling(fetchFn, options = {}) {
     const idleInterval = options.idleInterval || 12000; // 12 秒
     const activeInterval = options.activeInterval || 2000; // 2 秒
     const activeDuration = options.activeDuration || 30000; // 30 秒
+    const disableIdle = options.disableIdle === true;
 
     let intervalId = null;
     let activeTimeoutId = null;
@@ -75,6 +76,10 @@ export function useSmartPolling(fetchFn, options = {}) {
         // 立即執行一次
         poll();
 
+        if (disableIdle) {
+            return;
+        }
+
         // 設定閒置間隔
         intervalId = setInterval(poll, idleInterval);
     };
@@ -123,6 +128,11 @@ export function useSmartPolling(fetchFn, options = {}) {
         if (activeTimeoutId) {
             clearTimeout(activeTimeoutId);
             activeTimeoutId = null;
+        }
+
+        if (disableIdle) {
+            stopPolling();
+            return;
         }
 
         // 恢復閒置間隔
