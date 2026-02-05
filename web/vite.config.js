@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
+const Api = 'http://mc.yyanc9.com'
 export default defineConfig({
   plugins: [
     vue(),
@@ -18,31 +19,31 @@ export default defineConfig({
   server: {
     proxy: {
       '/Authentication': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/mc-api': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/server-api': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/user': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/logout': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       },
       '/LOL-AmongUs': {
-        target: 'http://127.0.0.1:8080',
+        target: Api,
         changeOrigin: true,
       }
     }
