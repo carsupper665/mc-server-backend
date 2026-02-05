@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-const Api = 'http://mc.yyanc9.com'
+const Api = ''
 export default defineConfig({
   plugins: [
     vue(),
