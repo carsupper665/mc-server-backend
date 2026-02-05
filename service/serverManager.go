@@ -82,6 +82,7 @@ func (s *Server) Start() error {
 		"--port", s.port,
 	}
 	cmdArgs = append(cmdArgs, s.args...)
+	common.Logger.Debugf("Starting server with args: %v", cmdArgs)
 	cmd := exec.CommandContext(context.Background(), "java", cmdArgs...)
 	cmd.Dir = s.workDir
 	stdin, err := cmd.StdinPipe()
@@ -654,7 +655,7 @@ func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, g
 	}
 
 	oldModPath := oldModFile
-	// remove old
+	// rename old mod
 	if err := os.Rename(oldModPath, oldModPath+".old"); err != nil {
 		return err
 	}
@@ -665,6 +666,7 @@ func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, g
 	}
 
 	if isLatest {
+		_ = os.Rename(oldModPath+".old", oldModPath)
 		return nil
 	}
 
@@ -685,11 +687,11 @@ func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, g
 	}
 
 	//update db
-	if err := model.AddModToServer(sid, modId, newModInfo.ID, oldModFile, autoUpdate); err != nil {
+	if err := model.AddModToServer(sid, modId, newModInfo.ID, file.Filename, autoUpdate); err != nil {
 		_ = os.Remove(newFile)
 		_ = os.Rename(oldModPath+".old", oldModPath)
 		return err
 	}
-
+	_ = os.Remove(oldModPath + ".old")
 	return nil
 }

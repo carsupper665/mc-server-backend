@@ -22,7 +22,6 @@ import {
   SaveOutlined,
 } from '@vicons/antd';
 import api, { getSanitizedErrorMessage } from '../api';
-import { useSmartPolling } from '../composables/useSmartPolling';
 import PropertiesEditor from '../components/PropertiesEditor.vue';
 import MacroPanel from '../components/MacroPanel.vue';
 import ServerBackups from '../components/ServerBackups.vue';
@@ -88,9 +87,6 @@ const termInstance = computed(() => unref(consoleRef.value?.term));
 // 樂觀更新狀態
 const isOptimisticLoading = ref(false);
 const optimisticAction = ref(null); // 'starting' | 'stopping' | null
-
-// 整合智慧輪詢 - 稍後在 fetchServerDetail 定義後初始化
-let smartPolling = null;
 
 const fetchServerDetail = async () => {
   try {
@@ -161,7 +157,6 @@ const handleStart = async () => {
     const errorMsg = getSanitizedErrorMessage(err);
     message.error('啟動失敗: ' + errorMsg);
     activityLog.logError('啟動伺服器', props.id, errorMsg);
-    smartPolling?.pollNow();
   }
 };
 
@@ -185,7 +180,6 @@ const handleStop = async () => {
     const errorMsg = getSanitizedErrorMessage(err);
     message.error('停止失敗: ' + errorMsg);
     activityLog.logError('停止伺服器', props.id, errorMsg);
-    smartPolling?.pollNow();
   }
 };
 
@@ -335,13 +329,6 @@ const handleTabChange = tabName => {
 
 
 
-// 狀態變更回調 - 用於提前退出活躍模式並重置樂觀狀態
-const onStatusChange = (newStatus, oldStatus) => {
-  console.log(`[SmartPolling] 狀態變更: ${oldStatus} -> ${newStatus}`);
-  isOptimisticLoading.value = false;
-  optimisticAction.value = null;
-};
-
 // 當指令發送後延遲刷新日誌 (解決模板中 setTimeout 無法識別的問題)
 const handleCommandSent = () => {
   setTimeout(() => fetchLogs(), 500);
@@ -351,7 +338,6 @@ const handleCommandSent = () => {
 const handleBackupStop = async () => {
   try {
     await api.post(`/mc-api/a/stop/${props.id}`);
-    smartPolling?.enterActiveMode();
   } catch (err) {
     console.error('Backup stop error:', err);
   }
@@ -360,7 +346,6 @@ const handleBackupStop = async () => {
 const handleBackupStart = async () => {
   try {
     await api.post(`/mc-api/a/start/${props.id}`);
-    smartPolling?.enterActiveMode();
   } catch (err) {
     console.error('Backup start error:', err);
   }
@@ -371,24 +356,13 @@ onMounted(() => {
   // loadCommandHistory();
 
   fetchServerInfo();
-
-  // 初始化智慧輪詢
-  smartPolling = useSmartPolling(fetchServerDetail, {
-    idleInterval: 12000, // 閒置模式: 12 秒
-    activeInterval: 2000, // 活躍模式: 2 秒
-    activeDuration: 30000, // 活躍持續: 30 秒
-    onStatusChange,
-  });
-
-  // 開始輪詢
-  smartPolling.startPolling();
+  fetchServerDetail();
 
   // Logs 仍使用固定間隔
   const logInterval = setInterval(fetchLogs, 5000);
 
   // 儲存 cleanup 引用
   onBeforeUnmount(() => {
-    smartPolling?.stopPolling();
     clearInterval(logInterval);
   });
 });

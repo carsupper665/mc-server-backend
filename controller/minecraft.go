@@ -9,6 +9,8 @@ import (
 	"go-backend/service"
 	"net/http"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -77,6 +79,30 @@ func MyServers(c *gin.Context) {
 	}
 
 	c.JSON(200, servers)
+}
+
+func ServerDetails(c *gin.Context) {
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(404, gin.H{"error": "Server Not Found"})
+		return
+	}
+	_, _, uid, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": ""})
+		return
+	}
+	if err := model.IsOwner(uid, sid); err != nil {
+		c.JSON(403, gin.H{"error": "Forbidden"})
+		return
+	}
+
+	server, err := model.GetServerByID(uid, sid)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to retrieve server"})
+		return
+	}
+	c.JSON(200, gin.H{"server": server})
 }
 
 func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
@@ -218,6 +244,51 @@ func NewServerController(svc *service.ServerService) *ServerController {
 	return &ServerController{svc: svc}
 }
 
+func parseMemBytes(raw string) (int64, error) {
+	s := strings.TrimSpace(strings.ToUpper(raw))
+	if s == "" {
+		return 0, errors.New("empty memory size")
+	}
+
+	unit := int64(1)
+	switch {
+	case strings.HasSuffix(s, "KB"):
+		unit = 1024
+		s = strings.TrimSuffix(s, "KB")
+	case strings.HasSuffix(s, "K"):
+		unit = 1024
+		s = strings.TrimSuffix(s, "K")
+	case strings.HasSuffix(s, "MB"):
+		unit = 1024 * 1024
+		s = strings.TrimSuffix(s, "MB")
+	case strings.HasSuffix(s, "M"):
+		unit = 1024 * 1024
+		s = strings.TrimSuffix(s, "M")
+	case strings.HasSuffix(s, "GB"):
+		unit = 1024 * 1024 * 1024
+		s = strings.TrimSuffix(s, "GB")
+	case strings.HasSuffix(s, "G"):
+		unit = 1024 * 1024 * 1024
+		s = strings.TrimSuffix(s, "G")
+	case strings.HasSuffix(s, "TB"):
+		unit = 1024 * 1024 * 1024 * 1024
+		s = strings.TrimSuffix(s, "TB")
+	case strings.HasSuffix(s, "T"):
+		unit = 1024 * 1024 * 1024 * 1024
+		s = strings.TrimSuffix(s, "T")
+	}
+
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errors.New("invalid memory size")
+	}
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || val < 0 {
+		return 0, errors.New("invalid memory size")
+	}
+	return val * unit, nil
+}
+
 func (sc *ServerController) GetServerLog(c *gin.Context) {
 	serverID := c.Param("server_id")
 	if serverID == "" {
@@ -284,8 +355,31 @@ func (sc *ServerController) Start(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Server start Failed."})
 		return
 	}
+	// 兼容舊DB 沒有設定 XMX XMS
+	xmxBytes := serverInfo.Xmx
+	xmsBytes := serverInfo.Xms
+	if xmxBytes < 0 {
+		c.JSON(400, gin.H{"error": "Invalid Xmx value"})
+		return
+	}
+	if xmsBytes < 0 {
+		c.JSON(400, gin.H{"error": "Invalid Xms value"})
+		return
+	}
+	if xmxBytes == 0 {
+		xmxBytes = 2 * 1024 * 1024 * 1024
+	}
+	if xmsBytes == 0 {
+		xmsBytes = 1024 * 1024 * 1024
+	}
+	if xmsBytes > xmxBytes {
+		c.JSON(400, gin.H{"error": "Xms cannot be greater than Xmx"})
+		return
+	}
 
-	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, "2G", "1G", []string{})
+	xmxArg := fmt.Sprintf("%dM", xmxBytes/common.MB)
+	xmsArg := fmt.Sprintf("%dM", xmsBytes/common.MB)
+	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, []string{})
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, StartServer error: "+err.Error())
 		if !errors.Is(err, service.ErrAlreadyRunning) && !errors.Is(err, service.ErrNotFound) && !errors.Is(err, service.ErrMaxReached) {
@@ -779,8 +873,11 @@ func (sc *ServerController) ListMod(c *gin.Context) {
 		Version      string `json:"version"`
 		Enabled      bool   `json:"enabled"`
 		GameVersions string `json:"game_versions"`
-	}
 
+		IconURL    string `json:"icon_url"`
+		Summary    string `json:"summary"`
+		Categories string `json:"categories"`
+	}
 	resp := make([]modInfo, 0, len(modData))
 	for _, sm := range modData {
 		name := sm.Mod.Name
@@ -795,16 +892,20 @@ func (sc *ServerController) ListMod(c *gin.Context) {
 			version = sm.VersionID
 		}
 		gameVersions := sm.Version.GameVersions
+
 		resp = append(resp, modInfo{
 			Name:         name,
 			ModID:        sm.ModID,
 			Version:      version,
 			Enabled:      sm.Enabled,
 			GameVersions: gameVersions,
+			IconURL:      sm.Mod.IconURL,
+			Summary:      sm.Mod.Summary,
+			Categories:   sm.Mod.Categories,
 		})
 	}
 
-	c.JSON(200, gin.H{"message": resp})
+	c.JSON(200, gin.H{"data": resp})
 }
 
 func (sc *ServerController) DelMod(c *gin.Context) {

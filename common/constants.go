@@ -7,6 +7,7 @@ const (
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
+	WebHeader               = "C-MPMC-WEB-Header"
 	AvailableClientVersions = "0.1.0"
 	LatestClientVersion     = "0.1.0"
 )
@@ -58,10 +59,10 @@ var EmailLoginAuthServerList = []string{
 }
 
 const (
-	RoleGuestUser  = 0
-	RoleCommonUser = 1
-	RoleAdminUser  = 4
-	RoleRootUser   = 6
+	RoleGuestUser     = 0
+	RoleMemberUser    = 1
+	RoleVipMemberUser = 2
+	RoleRootUser      = 6
 )
 
 // 到時候看看可以應用在哪裡

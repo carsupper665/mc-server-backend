@@ -10,6 +10,9 @@ type UserMinecraftServer struct {
 	OwnerID     uint   `gorm:"primaryKey;not null" json:"owner_id"`
 	DisplayName string `gorm:"size:100;not null" json:"display_name"`
 	ServerID    string `gorm:"primaryKey;size:32;not null" json:"server_id"`
+	Args        string `gorm:"size:100;default:''" json:"args"`
+	Xms         int64  `gorm:"default:1073741824" json:"xms"` //minMemBytes
+	Xmx         int64  `gorm:"default:2147483648" json:"xmx"` //maxMemBytes
 
 	// new!! 伺服器配置
 	MCVersion     string `gorm:"size:20" json:"mc_version"`     // "1.20.1"
@@ -28,6 +31,8 @@ func AddServerToUser(userID uint, serverID, displayName, ver, modLoader, loaderV
 		OwnerID:       userID,
 		ServerID:      serverID,
 		DisplayName:   displayName,
+		Xms:           1024 * 1024 * 1024,
+		Xmx:           2 * 1024 * 1024 * 1024,
 		MCVersion:     ver,
 		ModLoader:     modLoader,
 		LoaderVersion: loaderVer,

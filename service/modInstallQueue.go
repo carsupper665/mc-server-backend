@@ -250,7 +250,7 @@ func (q *installQueue) worker(serverID string) {
 		}
 
 		job.setStatus(JobCompleted, nil)
-		q.publishJobEvent(job, "completed", InstallRequest{}, 100, "completed", nil)
+		q.publishJobEvent(job, "completed", InstallRequest{}, 100, job.Message, nil)
 		CloseInstallEvents(job.ID)
 		close(job.done)
 	}
@@ -533,9 +533,11 @@ func executeInstallPlan(job *InstallJob, plan *InstallPlan) error {
 		modInstallQueue.publishJobEvent(job, "downloading", req, pct, "downloading", nil)
 		err := AddMod(req.ServerID, req.WorkDir, req.ModLoader, req.GameVer, req.ModID, req.VersionID, req.AutoUpdate)
 		if err != nil {
+			common.Logger.Errorf("failed to add mod install plan: %v", err)
 			if errors.Is(err, AlreadyInsErr) {
 				done++
 				pct = progress(done, total)
+				job.Message = "already installed"
 				modInstallQueue.publishJobEvent(job, "skipped", req, pct, "already installed", nil)
 				continue
 			}

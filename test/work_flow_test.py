@@ -76,15 +76,15 @@ class HttpTester:
 
     def server(self, server_id: str, action: str):
         v1_api = ["add_mod"]
-        if action not in ["start", "stop", "backup", "ls-backup", "usage"] and action not in v1_api:
+        if action not in ["start", "stop", "backup", "ls-backup", "usage", "details"] and action not in v1_api:
             raise ValueError("action must be 'start' or 'stop'")
         if not self.is_sess_exist:
             if self.verbose:
                 print("please login")
             return None, None
         if action not in v1_api:
-            url = f"{BASE_URL}/mc-api/a/{action}/{server_id}"
-            if action in ["usage"]:
+            url = f"{BASE_URL}/api/v1/server/{action}/{server_id}"
+            if action in ["usage", "details"]:
                 response = self.session.get(url)
             else:
                 response = self.session.post(url,)
@@ -138,6 +138,8 @@ class HttpTester:
         url = f"{BASE_URL}/api/v1/server/mod/subscribe/{job_id}"
         response = self.session.get(url, stream=True, headers={"Accept": "text/event-stream"})
         return response
+
+    # def details
 
     def del_mod(self, server_id: str, mod_id: str):
         if not self.is_sess_exist:
@@ -224,11 +226,9 @@ if __name__ == "__main__":
     term.load_cookies("cookies.json")
     # term.add_mod("mcsfv-1.20.1-3515-OID-1", "9s6osm5g")
     # term.add_mod("mcsfv-1.21.5-0379-OID-1", "AANobbMI")
-
     term.list_mods("mcsfv-1.21.5-4782-OID-1")
-    term.del_mod("mcsfv-1.21.5-4782-OID-1", "9s6osm5g")
-
-    term.list_mods("mcsfv-1.21.5-4782-OID-1")
-    term.add_mod("mcsfv-1.21.5-4782-OID-1", "9s6osm5g")
-
-    term.list_mods("mcsfv-1.21.5-4782-OID-1")
+    term.server("mcsfv-1.21.5-4782-OID-1", "details")
+    # term.list_mods("mcsfv-1.21.5-4782-OID-1")
+    # term.add_mod("mcsfv-1.21.5-4782-OID-1", "9s6osm5g")
+    #
+    # term.list_mods("mcsfv-1.21.5-4782-OID-1")

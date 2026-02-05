@@ -70,6 +70,11 @@ func UserAgentFilter() gin.HandlerFunc {
 	allowed := []string{
 		"mpmc-web-ua-v",
 		"mpmc-client-ua",
+		"yyanc9-cli",
+		"chrome",
+		"firefox",
+		"safari",
+		"opera",
 	}
 
 	return func(c *gin.Context) {
@@ -93,8 +98,10 @@ func UserAgentFilter() gin.HandlerFunc {
 			return
 		}
 
+		webUa := c.GetHeader(common.WebHeader)
+
 		for _, a := range allowed {
-			if strings.Contains(ua, a) {
+			if strings.Contains(ua, a) && strings.Contains(webUa, allowed[0]) {
 				common.LogDebug(c.Request.Context(), "User-Agent allowed: "+ua)
 				c.Next()
 				return

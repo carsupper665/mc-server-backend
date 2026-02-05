@@ -42,7 +42,7 @@ func SetAPIRouter(router *gin.Engine) {
 		amcapi.POST("/start/:server_id", c.Start)
 		amcapi.POST("/ls-backup/:server_id", c.ListServerBackup)
 		amcapi.POST("/property/:server_id", c.GetServerProperties)
-		amcapi.POST("/UploadProperty/:server_id", c.UploadProperty)
+		amcapi.POST("/property/upload/:server_id", c.UploadProperty)
 		amcapi.POST("/cmd/:server_id", c.SendCommand)
 		amcapi.GET("/usage/:server_id", c.ServerUsage)
 		amcapi.POST("/recover", c.SaveRollBack)
@@ -99,12 +99,13 @@ func SetAPIRouter(router *gin.Engine) {
 		serverApi.GET("/backup/:server_id", c.Backup)
 		serverApi.POST("/recover", c.SaveRollBack)
 
-		serverApi.GET("/property/:server_id", c.GetServerProperties)
+		serverApi.POST("/property/:server_id", c.GetServerProperties)
 		serverApi.POST("/property/upload/:server_id", c.UploadProperty)
 
 		serverApi.POST("/command/:server_id", c.SendCommand)
 		serverApi.GET("/usage/:server_id", c.ServerUsage)
 		serverApi.GET("/log/:server_id", c.GetServerLog)
+		serverApi.GET("/details/:server_id", controller.ServerDetails)
 
 	}
 	serverMod := serverApi.Group("/mod")

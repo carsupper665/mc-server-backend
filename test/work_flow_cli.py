@@ -721,7 +721,7 @@ def build_parser(
     srv.add_argument("server_id", help=help_text(lang, "help_server_id"))
     srv.add_argument(
         "action",
-        choices=["start", "stop", "backup", "ls-backup", "usage"],
+        choices=["start", "stop", "backup", "ls-backup", "usage", "details"],
         help=help_text(lang, "help_action"),
     )
     srv.set_defaults(func=cmd_server_action)

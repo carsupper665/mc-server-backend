@@ -44,8 +44,6 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 0) 檢查暫時封鎖
-
 	switch {
 	case req.Email != "":
 		user, err = model.LoginByEmail(req.Email)
@@ -62,6 +60,7 @@ func Login(c *gin.Context) {
 		} else {
 			c.JSON(500, gin.H{"error": "Internal server error"})
 		}
+		_ = model.RecordAttempt(clientIP, false)
 		return
 	}
 
