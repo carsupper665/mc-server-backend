@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
 import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NText, NProgress, useMessage } from 'naive-ui';
@@ -111,12 +111,27 @@ const handleLogin = async () => {
   }
 };
 
+const autoLogin = async () => {
+  try {
+    await authStore.fetchUser();
+    if (authStore.isLoggedIn) {
+      router.replace('/');
+    }
+  } catch (err) {
+    // ignore if not logged in
+  }
+};
+
 // 返回登入時清除計時器
 const backToLogin = () => {
   stopCountdown();
   isVerifying.value = false;
   verificationCode.value = '';
 };
+
+onMounted(() => {
+  autoLogin();
+});
 
 onBeforeUnmount(() => {
   stopCountdown();

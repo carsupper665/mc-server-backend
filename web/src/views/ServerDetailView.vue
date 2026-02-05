@@ -3,11 +3,14 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, unref } fro
 import {
   NSpace,
   NButton,
+  NAvatar,
   NCard,
+  NEmpty,
   NGrid,
   NGridItem,
   NTag,
   NInput,
+  NSwitch,
   NText,
   useMessage,
   NPopconfirm,
@@ -211,6 +214,100 @@ const fetchProperties = async () => {
   }
 };
 
+const mods = ref([]);
+const modsLoading = ref(false);
+const modSearch = ref('');
+const placeholderIcon = 'https://cdn.modrinth.com/placeholder.svg';
+const updatingMods = ref({});
+
+const filteredMods = computed(() => {
+  const keyword = modSearch.value.trim().toLowerCase();
+  if (!keyword) return mods.value;
+  return mods.value.filter(mod => (mod.name || '').toLowerCase().includes(keyword));
+});
+
+const parseCategories = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(Boolean);
+      }
+    } catch (err) {
+      // ignore JSON parse errors, fallback to splitting string
+    }
+    return trimmed.split(',').map(item => item.trim()).filter(Boolean);
+  }
+  return [String(raw)];
+};
+
+const normalizeModList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.message)) return payload.message;
+  return [];
+};
+
+const fetchMods = async () => {
+  modsLoading.value = true;
+  try {
+    const res = await api.get(`/api/v1/server/mod/list/${props.id}`);
+    mods.value = normalizeModList(res);
+  } catch (err) {
+    mods.value = [];
+    message.error('無法載入模組列表');
+  } finally {
+    modsLoading.value = false;
+  }
+};
+
+const handleToggleMod = async (mod, nextValue) => {
+  const prevValue = mod.enabled;
+  mod.enabled = nextValue;
+  try {
+    await api.get(`/api/v1/server/mod/toggle/${props.id}`, {
+      params: { mod_id: mod.mod_id },
+    });
+    message.success(`${mod.name || mod.mod_id} 已${nextValue ? '啟用' : '停用'}`);
+  } catch (err) {
+    mod.enabled = prevValue;
+    message.error('切換失敗: ' + getSanitizedErrorMessage(err));
+  }
+};
+
+const handleDeleteMod = async (mod) => {
+  try {
+    await api.get(`/api/v1/server/mod/remove/${props.id}`, {
+      params: { mod_id: mod.mod_id },
+    });
+    mods.value = mods.value.filter(item => item.mod_id !== mod.mod_id);
+    message.success('已刪除模組');
+  } catch (err) {
+    message.error('刪除失敗: ' + getSanitizedErrorMessage(err));
+  }
+};
+
+const handleUpdateMod = async (mod) => {
+  if (!mod?.mod_id || updatingMods.value[mod.mod_id]) return;
+  updatingMods.value = { ...updatingMods.value, [mod.mod_id]: true };
+  try {
+    await api.get(`/api/v1/server/mod/update/${props.id}`, {
+      params: { mod_id: mod.mod_id },
+    });
+    message.success('更新已送出');
+  } catch (err) {
+    message.error('更新失敗: ' + getSanitizedErrorMessage(err));
+  } finally {
+    const next = { ...updatingMods.value };
+    delete next[mod.mod_id];
+    updatingMods.value = next;
+  }
+};
+
 const saveProperties = async () => {
   propertiesSaving.value = true;
   try {
@@ -230,6 +327,9 @@ const handleTabChange = tabName => {
   activeTab.value = tabName;
   if (tabName === 'properties' && !propertiesContent.value) {
     fetchProperties();
+  }
+  if (tabName === 'mods' && mods.value.length === 0) {
+    fetchMods();
   }
 };
 
@@ -386,6 +486,13 @@ onMounted(() => {
           BACKUPS
         </n-button>
         <n-button
+          :type="activeTab === 'mods' ? 'primary' : 'default'"
+          ghost
+          @click="handleTabChange('mods')"
+        >
+          MODS
+        </n-button>
+        <n-button
           :type="activeTab === 'properties' ? 'primary' : 'default'"
           ghost
           @click="handleTabChange('properties')"
@@ -406,6 +513,107 @@ onMounted(() => {
         @request-start="handleBackupStart"
         @backup-started="smartPolling?.enterActiveMode()"
       />
+
+      <n-card
+        v-if="activeTab === 'mods'"
+        class="mods-section fade-in-up"
+        style="animation-delay: 0.3s"
+      >
+        <template #header>
+          <div class="mods-header">
+            <div class="mods-title">
+              <n-text strong>SERVER MODS</n-text>
+              <n-text depth="3" class="mods-count">
+                {{ filteredMods.length }} / {{ mods.length }}
+              </n-text>
+            </div>
+            <n-input
+              v-model:value="modSearch"
+              size="small"
+              clearable
+              placeholder="搜尋模組名稱"
+              class="mods-search"
+            />
+          </div>
+        </template>
+
+        <template v-if="modsLoading">
+          <div class="loading-placeholder">
+            <n-text depth="3">正在載入模組...</n-text>
+          </div>
+        </template>
+        <template v-else>
+          <n-empty v-if="filteredMods.length === 0" description="沒有可顯示的模組" />
+          <div v-else class="mods-list">
+            <div
+              v-for="mod in filteredMods"
+              :key="mod.mod_id"
+              :class="['mod-row', { 'is-running': isRunning }]"
+            >
+              <n-avatar
+                :src="mod.icon_url || placeholderIcon"
+                :size="56"
+                round
+                class="mod-icon"
+              />
+              <div class="mod-main">
+                <div class="mod-info">
+                  <div class="mod-title-row">
+                    <a
+                      class="mod-link"
+                      :href="`https://modrinth.com/mod/${mod.mod_id}`"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <n-text strong>{{ mod.name }}</n-text>
+                    </a>
+                  </div>
+                  <n-text depth="3" class="mod-summary">{{ mod.summary }}</n-text>
+                  <div class="mod-categories">
+                    <n-tag
+                      v-for="cat in parseCategories(mod.categories)"
+                      :key="`${mod.mod_id}-${cat}`"
+                      size="small"
+                      type="info"
+                      class="category-tag"
+                    >
+                      {{ cat }}
+                    </n-tag>
+                  </div>
+                </div>
+                <div class="mod-version">
+                  <n-text strong>{{ mod.version }}</n-text>
+                  <n-text depth="3">{{ mod.game_versions }}</n-text>
+                  <n-text v-if="updatingMods[mod.mod_id]" class="mod-updating" depth="3">
+                    UPDATING...
+                  </n-text>
+                </div>
+              </div>
+              <div v-if="!isRunning" class="mod-actions">
+                <n-switch
+                  :value="mod.enabled"
+                  :disabled="updatingMods[mod.mod_id]"
+                  @update:value="value => handleToggleMod(mod, value)"
+                />
+                <n-popconfirm title="確定要刪除此模組嗎？" @positive-click="handleDeleteMod(mod)">
+                  <template #trigger>
+                    <n-button type="error" class="delete-btn" :disabled="updatingMods[mod.mod_id]">-</n-button>
+                  </template>
+                </n-popconfirm>
+                <n-button
+                  type="primary"
+                  ghost
+                  :loading="updatingMods[mod.mod_id]"
+                  :disabled="updatingMods[mod.mod_id]"
+                  @click="handleUpdateMod(mod)"
+                >
+                  UPDATE
+                </n-button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </n-card>
 
       <!-- 設定檔 Tab -->
       <n-card
@@ -524,6 +732,150 @@ onMounted(() => {
   height: 200px;
 }
 
+.mods-section {
+  background-color: #1a1a20 !important;
+  border: 1px solid #333 !important;
+  margin-top: 20px;
+}
+
+.mods-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.mods-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mods-count {
+  font-size: 12px;
+}
+
+.mods-search {
+  width: 240px;
+}
+
+.mods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mod-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 220px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 10px;
+  background-color: #16161c;
+}
+
+.mod-row.is-running {
+  grid-template-columns: 56px 1fr;
+}
+
+.mod-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.delete-btn {
+  min-width: 36px;
+  padding: 0 10px;
+}
+
+.mod-icon {
+  background-color: #24242a;
+}
+
+.mod-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mod-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mod-info .n-text--strong {
+  font-size: 16px;
+}
+
+.mod-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mod-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.mod-link:hover .n-text {
+  color: #7fd1ff !important;
+}
+
+.mod-link:focus-visible {
+  outline: 1px solid #7fd1ff;
+  border-radius: 4px;
+}
+
+.mod-summary {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.mod-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.category-tag {
+  background-color: rgba(92, 196, 255, 0.15) !important;
+  border-color: rgba(92, 196, 255, 0.4) !important;
+}
+
+.mod-version {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+  min-width: 120px;
+  margin-right: 15%;
+}
+
+.mod-version .n-text {
+  font-size: 13px;
+}
+
+.mod-version .n-text--strong {
+  font-size: 14px;
+}
+
+.mod-updating {
+  color: #7fd1ff;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
 /* Tab 切換 */
 .tab-switcher {
   display: flex;
@@ -531,5 +883,39 @@ onMounted(() => {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #333;
+}
+
+@media (max-width: 768px) {
+  .mods-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .mods-search {
+    width: 100%;
+  }
+
+  .mod-row {
+    grid-template-columns: 48px 1fr;
+    align-items: start;
+  }
+
+  .mod-row.is-running {
+    grid-template-columns: 48px 1fr;
+  }
+
+  .mod-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .mod-version {
+    text-align: left;
+  }
+
+  .mod-main {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
