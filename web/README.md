@@ -96,7 +96,7 @@ npm run format
 ### 新增頁面
 
 1. 在 `src/views/` 建立 `XxxView.vue`
-2. 在 `src/router/index.js` 添加路由
+2. 在 `src/router/NameIndex.js` 添加路由
 3. 在 `src/layout/MainLayout.vue` 添加導航
 
 ## 🔒 安全注意事項

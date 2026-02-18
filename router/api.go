@@ -86,6 +86,7 @@ func SetAPIRouter(router *gin.Engine) {
 		apiPublic.GET("/vinfo", controller.GetAllVanillaVersions)
 	}
 	serverApi := v1.Group("/server")
+	//serverApi.Use(middleware.ValidateJWTHeader())
 	serverApi.Use(middleware.ValidateJWT())
 	{
 		serverApi.POST("/create", controller.CreateServer)

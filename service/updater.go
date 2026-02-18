@@ -353,6 +353,36 @@ func StartUpdateChecker(interval time.Duration, onUpdateSuccess func()) {
 	go updateChecker(interval, onUpdateSuccess)
 }
 
+func BuildUpdateChecker(onUpdateSuccess func()) func() error {
+	return func() error {
+		logger, err := common.NewSysLogger("checker", checkerLog, 50000)
+		if logger == nil || err != nil {
+			common.SysError("failed to start update checker logger")
+			return errors.New("failed to start update checker logger")
+		}
+
+		logger.Info("Running scheduled update check...")
+
+		if err := performUpdate(logger); err != nil {
+			if errors.Is(err, ErrAlreadyLatest) {
+				logger.Info("Already at latest version")
+			} else if errors.Is(err, ErrUpdateDisabled) {
+				logger.Info("Auto update is disabled")
+			} else {
+				logger.Error("Update check failed: " + err.Error())
+			}
+		} else {
+			// 更新成功
+			logger.Info("Update successful! Triggering restart...")
+			if onUpdateSuccess != nil {
+				onUpdateSuccess()
+			}
+			return nil
+		}
+		return nil
+	}
+}
+
 // updateChecker 背景更新檢查器
 func updateChecker(interval time.Duration, onUpdateSuccess func()) {
 	logger, err := common.NewSysLogger("checker", checkerLog, 50000)

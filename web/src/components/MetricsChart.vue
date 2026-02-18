@@ -54,7 +54,7 @@ const chartConfig = {
     responsive: true,
     maintainAspectRatio: false,
     interaction: {
-      mode: 'index',
+      mode: 'NameIndex',
       intersect: false
     },
     plugins: {
@@ -271,6 +271,6 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  z-NameIndex: 10;
 }
 </style>

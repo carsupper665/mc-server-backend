@@ -28,5 +28,6 @@ func SetAuthRouter(router *gin.Engine) {
 		auth.POST("/verify", controller.VerifyLogin)
 		auth.POST("/app/verify", controller.VerifyLogin)
 		auth.POST("/app/login", controller.AppLogin)
+		//auth.POST("/oidc/login", controller.OIDCLogin)
 	}
 }

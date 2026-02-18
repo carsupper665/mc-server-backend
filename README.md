@@ -48,6 +48,11 @@ SESSION_SECRET=change-me
 CRYPTO_SECRET=
 HMAC_SECRET=
 
+OIDC_GOOGLE_CLIENT_ID=__PLACEHOLDER__
+OIDC_CUSTOM_CLIENT_ID=fgf-mc-panel
+OIDC_CUSTOM_DISCOVERY_URL=http://localhost:15515/.well-known/openid-configuration
+OIDC_REQUIRE_EMAIL_VERIFIED=true
+
 SQLITE_PATH=DB.db?_busy_timeout=5000
 SQL_MAX_IDLE_CONNS=100
 SQL_MAX_OPEN_CONNS=1000
@@ -100,6 +105,13 @@ Secrets:
 - `CRYPTO_SECRET`: Encryption key for sensitive data. Defaults to
   `SESSION_SECRET` if empty.
 - `HMAC_SECRET`: HMAC key. Defaults to `SESSION_SECRET` if empty.
+
+OIDC:
+- `OIDC_GOOGLE_CLIENT_ID`: Google OAuth client ID for ID token `aud` check.
+- `OIDC_CUSTOM_CLIENT_ID`: FGF-idp OAuth client ID for ID token `aud` check.
+- `OIDC_CUSTOM_DISCOVERY_URL`: FGF-idp discovery URL
+  (e.g. `http://localhost:15515/.well-known/openid-configuration`).
+- `OIDC_REQUIRE_EMAIL_VERIFIED`: Require `email_verified=true` (default `true`).
 
 Database:
 - `SQLITE_PATH`: SQLite DSN/path (default `DB.db?_busy_timeout=5000`).

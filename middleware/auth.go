@@ -117,14 +117,15 @@ func ValidateJWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(common.JwtCookieName)
 		if err != nil || token == "" {
+			clearCookies(c)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
 		Valid := common.ValidateUser(token, c.ClientIP())
 		if !Valid {
+			clearCookies(c)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			c.SetCookie(common.JwtCookieName, "", -1, "/", "", false, true)
 			return
 		}
 
@@ -134,9 +135,9 @@ func ValidateJWT() gin.HandlerFunc {
 		uid, parseErr := strconv.ParseUint(rawUID.(string), 10, 32)
 		if parseErr != nil {
 			common.LogError(c.Request.Context(), fmt.Sprintf("Parse user_id error: %v", parseErr))
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			// clear cookies
-			c.SetCookie(common.JwtCookieName, "", -1, "/", "", false, true)
+			clearCookies(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 		c.Set("uintId", uint(uid))
@@ -145,4 +146,8 @@ func ValidateJWT() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func clearCookies(c *gin.Context) {
+	c.SetCookie(common.JwtCookieName, "", -1, "/", "", false, true)
 }

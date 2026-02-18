@@ -27,6 +27,7 @@ var (
 	RelayTimeout        int
 	Logger              *SysLogger
 	UseBetaVersion      bool
+	EL                  *EventLoop
 )
 
 func LoadEnv() {
@@ -103,8 +104,21 @@ func LoadEnv() {
 
 	UseBetaVersion = GetEnvOrDefaultBool("UPDATE_BETA", false)
 
+	OIDCGoogleClientID = GetEnvOrDefaultString("OIDC_GOOGLE_CLIENT_ID", "")
+	OIDCCustomClientID = GetEnvOrDefaultString("OIDC_CUSTOM_CLIENT_ID", "")
+	OIDCCustomDiscoveryURL = GetEnvOrDefaultString("OIDC_CUSTOM_DISCOVERY_URL", "")
+	OIDCRequireEmailVerified = GetEnvOrDefaultBool("OIDC_REQUIRE_EMAIL_VERIFIED", true)
+
 	SetUpSMTP()
 	LoadVanillaServerUrls()
+}
+
+func InitEventLoop() {
+	var err error
+	EL, err = NewEventLoop()
+	if err != nil {
+		Logger.Fatal("Failed to initialize event loop: " + err.Error())
+	}
 }
 
 func SetUpSMTP() {

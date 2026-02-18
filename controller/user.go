@@ -38,8 +38,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	_, err = c.Cookie(common.JwtCookieName)
-	if err == nil { // 已經登入了
+	token, err := c.Cookie(common.JwtCookieName)
+	if err == nil && token != "" { // 已經登入了
 		c.JSON(200, gin.H{"message": "Already logged in"})
 		return
 	}

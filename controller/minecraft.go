@@ -35,7 +35,6 @@ func CreateServer(c *gin.Context) {
 	}
 
 	sysPath := common.MinecraftServerPath + "/" + serverID
-
 	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, req.ServerVer,
 		req.ServerType, req.FabricLoader, sysPath)
 

@@ -126,7 +126,7 @@ const stageClass = (stage, status) => {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 1000;
+  z-NameIndex: 1000;
   font-family: 'Fira Code', monospace;
 }
 

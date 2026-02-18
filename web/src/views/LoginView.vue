@@ -266,7 +266,7 @@ onBeforeUnmount(() => {
   );
   background-size: 100% 4px, 3px 100%;
   pointer-events: none;
-  z-index: 10;
+  z-NameIndex: 10;
 }
 
 .login-card {
@@ -276,7 +276,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(10px);
   border: 1px solid #333 !important;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(24, 160, 88, 0.05);
-  z-index: 20;
+  z-NameIndex: 20;
   animation: cardEntry 0.8s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
   background: rgba(18, 16, 16, 0.05);
   pointer-events: none;
   animation: flicker 0.1s infinite;
-  z-index: 11;
+  z-NameIndex: 11;
 }
 
 /* 倒數計時器樣式 */

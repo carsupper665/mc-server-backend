@@ -62,7 +62,7 @@ const handleSearch = async () => {
       versions: selectedVersion.value ? [selectedVersion.value] : [],
       limit: pageSize.value,
       offset: (currentPage.value - 1) * pageSize.value,
-      index: sortBy.value
+      NameIndex: sortBy.value
     });
     
     mods.value = result.hits || [];

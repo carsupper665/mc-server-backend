@@ -210,19 +210,19 @@ const parseProperties = (raw) => {
   const result = {};
   const lineData = [];
 
-  lines.forEach((line, index) => {
+  lines.forEach((line, NameIndex) => {
     const trimmed = line.trim();
     
     // 保留空行和註解
     if (!trimmed || trimmed.startsWith('#')) {
-      lineData.push({ type: 'comment', value: line, index });
+      lineData.push({ type: 'comment', value: line, NameIndex });
       return;
     }
 
     // 解析 key=value
     const eqIndex = line.indexOf('=');
     if (eqIndex === -1) {
-      lineData.push({ type: 'comment', value: line, index });
+      lineData.push({ type: 'comment', value: line, NameIndex });
       return;
     }
 
@@ -230,7 +230,7 @@ const parseProperties = (raw) => {
     const value = line.substring(eqIndex + 1).trim();
     
     result[key] = value;
-    lineData.push({ type: 'property', key, value, index });
+    lineData.push({ type: 'property', key, value, NameIndex });
   });
 
   return { props: result, lines: lineData };

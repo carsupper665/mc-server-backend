@@ -64,7 +64,7 @@
       :bordered="false"
     >
       <template #header-extra>
-        <n-button size="small" secondary type="primary" tag="a" href="https://www.digminecraft.com/game_commands/index.php" target="_blank">
+        <n-button size="small" secondary type="primary" tag="a" href="https://www.digminecraft.com/game_commands/NameIndex.php" target="_blank">
           🌐 Online Wiki
         </n-button>
       </template>

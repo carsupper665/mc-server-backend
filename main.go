@@ -41,8 +41,6 @@ func main() {
 	}
 
 	logger = common.Logger
-
-	//common.SysLog("Backend Server Engine | " + common.Version + common.ColorBuild + " started")
 	logger.Infof("Backend Server Engine | %s%s started", common.Version, common.ColorBuild)
 
 	if os.Getenv("DEBUG") != "true" {
@@ -69,6 +67,7 @@ func main() {
 	} else {
 
 		updateErr := service.CheckForUpdates()
+		//var updateErr error = service.ErrAlreadyLatest
 		if updateErr != nil {
 			if !errors.Is(updateErr, service.ErrAlreadyLatest) && !errors.Is(updateErr, service.ErrUpdateDisabled) {
 				logger.Errorf("Update check failed: %s", updateErr.Error())
@@ -125,13 +124,19 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
-	service.StartUpdateChecker(3*24*time.Hour, func() {
+	upf := service.BuildUpdateChecker(func() {
 		err := restartApplication()
 		if err != nil {
 			logger.Fatal("failed to restart application: " + err.Error())
 		}
+		common.EL.StopEventLoop()
 		os.Exit(0)
 	})
+	common.InitEventLoop()
+	if err := common.EL.RegisterEvent("Auto-Update", upf, 24*3*time.Hour, -1); err != nil {
+		logger.Errorf("failed to register update checker: %s", err.Error())
+	}
+	go common.EL.Start()
 
 	time.Sleep(500 * time.Millisecond)
 	logger.Infof("HTTP server listening on :%s", port)
@@ -140,6 +145,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to start HTTP server: " + err.Error())
 	}
+	common.EL.StopEventLoop()
 }
 
 // restartApplication 重啟應用程式

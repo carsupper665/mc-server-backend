@@ -3,7 +3,7 @@ package common
 
 const (
 	Version                 = "v1.1.0"
-	Build                   = "-beta-2.0r1"
+	Build                   = "-beta-2.0r27"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
@@ -47,6 +47,13 @@ var SMTPSSLEnabled bool
 var SMTPAccount string
 var SMTPFrom string
 var SMTPToken string
+
+var (
+	OIDCGoogleClientID       string
+	OIDCCustomClientID       string
+	OIDCCustomDiscoveryURL   string
+	OIDCRequireEmailVerified bool
+)
 
 var (
 	GlobalApiRateLimitNum      int
