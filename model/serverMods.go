@@ -116,6 +116,31 @@ type ServerMod struct {
 	LatestVersion *ModVersion         `gorm:"foreignKey:LatestVersionID;references:VersionID" json:"latest_version,omitempty"`
 }
 
+type InstalledModSyncTarget struct {
+	ModID     string `json:"mod_id"`
+	MCVersion string `json:"mc_version"`
+	ModLoader string `json:"mod_loader"`
+}
+
+func ListInstalledModSyncTargets() ([]InstalledModSyncTarget, error) {
+	var targets []InstalledModSyncTarget
+
+	err := DB.Table("server_mods AS sm").
+		Select("DISTINCT sm.mod_id AS mod_id, ums.mc_version AS mc_version, LOWER(ums.mod_loader) AS mod_loader").
+		Joins("JOIN user_minecraft_servers AS ums ON ums.server_id = sm.server_id").
+		Where("sm.status IN ?", []string{"installed", "disabled"}).
+		Where("sm.mod_id <> ''").
+		Where("ums.mc_version <> ''").
+		Where("ums.mod_loader <> ''").
+		Where("LOWER(ums.mod_loader) <> ?", "vanilla").
+		Find(&targets).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return targets, nil
+}
+
 func GetServerMod(serverID, modID string) (*ServerMod, error) {
 	var serverMod ServerMod
 	err := DB.Where("server_id = ? AND mod_id = ?", serverID, modID).

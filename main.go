@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"go-backend/common"
@@ -13,7 +14,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -65,7 +69,6 @@ func main() {
 	if errUpLog != nil {
 		logger.Fatal("failed to init update log table: %s", errUpLog.Error())
 	} else {
-
 		updateErr := service.CheckForUpdates()
 		//var updateErr error = service.ErrAlreadyLatest
 		if updateErr != nil {
@@ -124,28 +127,86 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
+	// unified manual shutdown trigger for non-signal paths.
+	manualCtx, manualCancel := context.WithCancel(context.Background())
+	defer manualCancel()
+	var shutdownOnce sync.Once
+	triggerShutdown := func(reason string) {
+		shutdownOnce.Do(func() {
+			logger.Infof("Shutdown requested: %s", reason)
+			manualCancel()
+		})
+	}
+
+	if err := eventRegister(triggerShutdown); err != nil {
+		logger.Fatal("failed to register events: " + err.Error())
+		return
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	logger.Infof("HTTP server listening on :%s, Ctrl+C To close.", port)
+
+	httpServer := &http.Server{
+		Addr:    ":" + port,
+		Handler: server,
+	}
+
+	serverErrCh := make(chan error, 1)
+	go func() {
+		err := httpServer.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- err
+			return
+		}
+		serverErrCh <- nil
+	}()
+
+	// [graceful-shutdown] system signals are routed to the same shutdown path.
+	sigCtx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
+
+	select {
+	case <-sigCtx.Done():
+		triggerShutdown("signal")
+	case <-manualCtx.Done():
+		// triggered by non-signal shutdown sources.
+	case err := <-serverErrCh:
+		if err != nil {
+			logger.Fatal("failed to start HTTP server: " + err.Error())
+		}
+	}
+
+	common.EL.StopEventLoop()
+
+	// Shutdown HTTP server and wait
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Errorf("HTTP server shutdown error: %s", err.Error())
+	}
+}
+
+func eventRegister(triggerShutdown func(reason string)) error {
 	upf := service.BuildUpdateChecker(func() {
 		err := restartApplication()
 		if err != nil {
-			logger.Fatal("failed to restart application: " + err.Error())
+			logger.Errorf("failed to restart application: %s", err.Error())
+			return
 		}
-		common.EL.StopEventLoop()
-		os.Exit(0)
+		triggerShutdown("auto-update")
 	})
 	common.InitEventLoop()
+
 	if err := common.EL.RegisterEvent("Auto-Update", upf, 24*3*time.Hour, -1); err != nil {
 		logger.Errorf("failed to register update checker: %s", err.Error())
 	}
-	go common.EL.Start()
 
-	time.Sleep(500 * time.Millisecond)
-	logger.Infof("HTTP server listening on :%s", port)
-
-	err = server.Run(":" + port)
-	if err != nil {
-		logger.Fatal("failed to start HTTP server: " + err.Error())
+	if err := common.EL.RegisterEvent("Mod-Version-AutoSync", service.SyncInstalledModVersions, 24*time.Hour, 1); err != nil {
+		logger.Errorf("failed to register mod version auto-sync: %s", err.Error())
 	}
-	common.EL.StopEventLoop()
+
+	common.EL.Start()
+	return nil
 }
 
 // restartApplication 重啟應用程式
