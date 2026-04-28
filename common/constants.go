@@ -3,7 +3,7 @@ package common
 
 const (
 	Version                 = "v1.1.0"
-	Build                   = "-beta-2.1r11"
+	Build                   = "-beta-2.2r14"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
@@ -15,6 +15,7 @@ const (
 const (
 	JwtCookieName    = "au4ul4"
 	JwtExpireSeconds = 24 * 60 * 60 * 7
+	DeviceHeader     = "X-Device-ID"
 )
 
 const (

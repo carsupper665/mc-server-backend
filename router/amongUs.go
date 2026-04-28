@@ -33,7 +33,7 @@ func SetAmongUsIRouter(router *gin.Engine) {
 	}
 
 	web := auRouter.Group("/a")
-	web.Use(middleware.ValidateJWT())
+	web.Use(middleware.ValidateJWTV2())
 	{
 		web.GET("/end/:id", c.EndGame)
 		web.GET("/c", c.Create)

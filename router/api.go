@@ -33,7 +33,7 @@ func SetAPIRouter(router *gin.Engine) {
 		mcapi.GET("/vinfo", controller.GetAllVanillaVersions)
 	}
 	amcapi := mcapi.Group("/a")
-	amcapi.Use(middleware.ValidateJWT())
+	amcapi.Use(middleware.ValidateJWTV2())
 	{
 		amcapi.POST("/create", controller.CreateServer)
 		amcapi.POST("/backup/:server_id", c.Backup)
@@ -53,7 +53,7 @@ func SetAPIRouter(router *gin.Engine) {
 		middleware.GloabalIPFilter(),
 	)
 	asapi := sapi.Group("/a")
-	asapi.Use(middleware.ValidateJWT())
+	asapi.Use(middleware.ValidateJWTV2())
 	{
 		asapi.GET("/log/:server_id", c.GetServerLog)
 	}
@@ -87,7 +87,7 @@ func SetAPIRouter(router *gin.Engine) {
 	}
 	serverApi := v1.Group("/server")
 	//serverApi.Use(middleware.ValidateJWTHeader())
-	serverApi.Use(middleware.ValidateJWT())
+	serverApi.Use(middleware.ValidateJWTV2())
 	{
 		serverApi.POST("/create", controller.CreateServer)
 		serverApi.DELETE("/del/:server_id", c.DeleteServerById)

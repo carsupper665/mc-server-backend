@@ -2,6 +2,7 @@
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
+import { getSanitizedErrorMessage } from '../api';
 import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NText, NProgress, useMessage } from 'naive-ui';
 
 const router = useRouter();
@@ -13,10 +14,10 @@ const loginForm = ref({
   password: ''
 });
 
-const verificationCode = ref('');
 const isVerifying = ref(false);
 
-// 倒數計時器邏輯 (5 分鐘 = 300 秒)
+// 倒數計時器邏輯（5 分鐘 = 300 秒）
+const COUNTDOWN_TOTAL_SECONDS = 300;
 const countdown = ref(0);
 let countdownInterval = null;
 
@@ -27,7 +28,7 @@ const countdownDisplay = computed(() => {
 });
 
 const countdownPercent = computed(() => {
-  return (countdown.value / 300) * 100;
+  return (countdown.value / COUNTDOWN_TOTAL_SECONDS) * 100;
 });
 
 const isExpired = computed(() => {
@@ -35,7 +36,7 @@ const isExpired = computed(() => {
 });
 
 const startCountdown = () => {
-  countdown.value = 300; // 5 分鐘
+  countdown.value = COUNTDOWN_TOTAL_SECONDS;
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = setInterval(() => {
     if (countdown.value > 0) {
@@ -54,38 +55,33 @@ const stopCountdown = () => {
   }
 };
 
+const errorText = (err, fallback = '未知錯誤') => {
+  const explicit = err.response?.data?.error;
+  if (explicit) return explicit;
+  const sanitized = getSanitizedErrorMessage(err);
+  return sanitized || fallback;
+};
+
 // 重新發送驗證碼
 const resendCode = async () => {
   stopCountdown();
   try {
     const res = await authStore.login(loginForm.value.username, loginForm.value.password);
-    if (res.message && res.message.includes('verification code sent')) {
+    if (res.requiresVerification) {
       startCountdown();
       message.success('驗證碼已重新發送，請查看 Email');
+      return;
     }
+    message.success('已登入');
+    router.push('/');
   } catch (err) {
-    message.error('發送失敗：' + (err.response?.data?.error || '未知錯誤'));
+    message.error('發送失敗：' + errorText(err));
   }
 };
 
 const handleLogin = async () => {
   if (isVerifying.value) {
-    if (!verificationCode.value) {
-      message.warning('請輸入驗證碼');
-      return;
-    }
-    if (isExpired.value) {
-      message.warning('驗證碼已過期，請重新發送');
-      return;
-    }
-    try {
-      stopCountdown();
-      await authStore.verifyCode(verificationCode.value);
-      message.success('驗證成功');
-      router.push('/');
-    } catch (err) {
-      message.error('驗證失敗：' + (err.response?.data?.error || '驗證碼錯誤'));
-    }
+    message.info('請到信箱點擊驗證連結完成登入');
     return;
   }
 
@@ -96,9 +92,7 @@ const handleLogin = async () => {
 
   try {
     const res = await authStore.login(loginForm.value.username, loginForm.value.password);
-    // Backend returns 202 if verification is needed
-    // res here is already unwrapped data due to axios interceptor
-    if (res.message && res.message.includes('verification code sent')) {
+    if (res.requiresVerification) {
       isVerifying.value = true;
       startCountdown();
       message.info('驗證碼已寄出，請查看 Email');
@@ -107,7 +101,7 @@ const handleLogin = async () => {
       router.push('/');
     }
   } catch (err) {
-    message.error('登入失敗：' + (err.response?.data?.error || '未知錯誤'));
+    message.error('登入失敗：' + errorText(err));
   }
 };
 
@@ -117,7 +111,7 @@ const autoLogin = async () => {
     if (authStore.isLoggedIn) {
       router.replace('/');
     }
-  } catch (err) {
+  } catch {
     // ignore if not logged in
   }
 };
@@ -126,7 +120,6 @@ const autoLogin = async () => {
 const backToLogin = () => {
   stopCountdown();
   isVerifying.value = false;
-  verificationCode.value = '';
 };
 
 onMounted(() => {
@@ -141,99 +134,105 @@ onBeforeUnmount(() => {
 <template>
   <div class="login-container">
     <div class="scanlines"></div>
-    <n-card class="login-card" :bordered="false">
-      <template #header>
-        <div class="login-header">
-          <div class="brand-logo">MC-SERVER</div>
-          <n-text depth="3" class="system-tag">{{ isVerifying ? '[ VERIFICATION REQUIRED ]' : '[ SYSTEM ACCESS ]' }}</n-text>
-        </div>
-      </template>
-      
-      <n-form @keyup.enter="handleLogin">
-        <template v-if="!isVerifying">
-          <n-form-item label="OPERATOR ID" path="username">
-            <n-input 
-              v-model:value="loginForm.username" 
-              placeholder="Username / Email"
-              class="terminal-input"
-            />
-          </n-form-item>
-          <n-form-item label="ACCESS KEY" path="password">
-            <n-input 
-              v-model:value="loginForm.password" 
-              type="password" 
-              show-password-on="mousedown"
-              placeholder="Password"
-              class="terminal-input"
-            />
-          </n-form-item>
+    <div class="login-card-wrap">
+      <div v-if="isVerifying && !isExpired" class="card-back-countdown">{{ countdownDisplay }}</div>
+      <n-card class="login-card" :bordered="false">
+        <template #header>
+          <div class="login-header">
+            <div class="brand-logo">MC-SERVER</div>
+            <n-text depth="3" class="system-tag">{{ isVerifying ? '[ VERIFICATION REQUIRED ]' : '[ SYSTEM ACCESS ]' }}</n-text>
+          </div>
         </template>
         
-        <template v-else>
-          <n-form-item label="VERIFICATION CODE" path="code">
-            <n-input 
-              v-model:value="verificationCode" 
-              placeholder="6-Digit Code"
-              class="terminal-input"
-              maxlength="6"
-              :disabled="isExpired"
-            />
-          </n-form-item>
+        <n-form @keyup.enter="handleLogin">
+          <template v-if="!isVerifying">
+            <n-form-item label="OPERATOR ID" path="username">
+              <n-input 
+                v-model:value="loginForm.username" 
+                placeholder="Username / Email"
+                class="terminal-input"
+              />
+            </n-form-item>
+            <n-form-item label="ACCESS KEY" path="password">
+              <n-input 
+                v-model:value="loginForm.password" 
+                type="password" 
+                show-password-on="mousedown"
+                placeholder="Password"
+                class="terminal-input"
+              />
+            </n-form-item>
+          </template>
           
-          <!-- 倒數計時器區塊 -->
-          <div class="countdown-section">
-            <n-space justify="space-between" align="center">
-              <n-text :depth="isExpired ? 1 : 3" :class="{ 'expired-text': isExpired }">
-                {{ isExpired ? '⚠ 驗證碼已過期' : `驗證碼有效時間：${countdownDisplay}` }}
+          <template v-else>
+            <div class="verification-message">
+              <n-text depth="2">
+                驗證連結已寄出，請前往 Email 點擊登入連結。
               </n-text>
-              <n-button 
-                v-if="isExpired" 
-                size="tiny" 
-                type="warning"
-                ghost
-                @click="resendCode"
-                :loading="authStore.loading"
-              >
-                重新發送
-              </n-button>
-            </n-space>
-            <n-progress 
-              type="line" 
-              :percentage="countdownPercent" 
-              :show-indicator="false"
-              :status="isExpired ? 'error' : 'success'"
-              :height="4"
-              class="countdown-progress"
-            />
-          </div>
-        </template>
-        
-        <n-space vertical :size="20">
-          <n-button 
-            type="primary" 
-            block 
-            :loading="authStore.loading"
-            @click="handleLogin"
-            class="terminal-button"
-          >
-            {{ isVerifying ? 'VERIFY CODE' : 'INITIALIZE AUTHENTICATION' }}
-          </n-button>
+              <n-text depth="3">
+                完成驗證後會自動導回系統。
+              </n-text>
+            </div>
+            
+            <!-- 倒數計時器區塊 -->
+            <div class="countdown-section" :class="{ 'countdown-section-expired': isExpired }">
+              <n-space justify="space-between" align="center">
+                <n-text :depth="isExpired ? 1 : 3" :class="{ 'expired-text': isExpired }">
+                  <template v-if="isExpired">
+                    驗證碼已過期
+                  </template>
+                  <template v-else>
+                    驗證碼有效時間
+                  </template>
+                </n-text>
+                <n-button 
+                  v-if="isExpired" 
+                  size="tiny" 
+                  text
+                  class="resend-link back-link"
+                  @click="resendCode"
+                  :loading="authStore.loading"
+                >
+                  重新發送
+                </n-button>
+              </n-space>
+              <n-progress 
+                type="line" 
+                :percentage="countdownPercent" 
+                :show-indicator="false"
+                :status="isExpired ? 'error' : 'success'"
+                :color="isExpired ? '#ef4444' : undefined"
+                :height="4"
+                class="countdown-progress"
+              />
+            </div>
+          </template>
           
-          <n-button 
-            v-if="isVerifying"
-            text 
-            @click="backToLogin"
-            class="back-link"
-          >
-            BACK TO LOGIN
-          </n-button>
-          
-          <div class="terminal-footer">
-            <n-text depth="3">AUTHORIZED PERSONNEL ONLY</n-text>
-          </div>
-        </n-space>
-      </n-form>
-    </n-card>
+          <n-space vertical :size="20">
+            <n-button 
+              v-if="!isVerifying"
+              type="primary" 
+              block 
+              :loading="authStore.loading"
+              @click="handleLogin"
+              class="terminal-button"
+            >
+              INITIALIZE AUTHENTICATION
+            </n-button>
+            
+            <n-button 
+              v-if="isVerifying"
+              text 
+              @click="backToLogin"
+              class="back-link"
+            >
+              ← BACK TO LOGIN
+            </n-button>
+            
+          </n-space>
+        </n-form>
+      </n-card>
+    </div>
   </div>
 </template>
 
@@ -269,15 +268,43 @@ onBeforeUnmount(() => {
   z-NameIndex: 10;
 }
 
-.login-card {
+.login-card-wrap {
+  position: relative;
   width: 90%;
   max-width: 400px;
-  background: rgba(20, 20, 25, 0.8) !important;
+  z-index: 20;
+}
+
+.card-back-countdown {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+  color: rgba(255, 255, 255, 0.28);
+  font-size: clamp(170px, 34vw, 300px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+
+.login-card {
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  background: rgba(20, 20, 25, 0.37) !important;
   backdrop-filter: blur(10px);
   border: 1px solid #333 !important;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(24, 160, 88, 0.05);
-  z-NameIndex: 20;
   animation: cardEntry 0.8s cubic-bezier(0.19, 1, 0.22, 1);
+  transition: background-color 0.2s ease;
+}
+
+.login-card:hover {
+  background: rgba(20, 20, 25, 0.8) !important;
 }
 
 @keyframes cardEntry {
@@ -324,13 +351,6 @@ onBeforeUnmount(() => {
   border-radius: 2px;
 }
 
-.terminal-footer {
-  text-align: center;
-  font-size: 10px;
-  letter-spacing: 1px;
-  opacity: 0.5;
-}
-
 @keyframes flicker {
   0% { opacity: 0.97; }
   5% { opacity: 0.95; }
@@ -362,23 +382,65 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.countdown-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.countdown-section-expired::before {
+  content: "⚠︎";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(239, 68, 68, 0.2);
+  font-size: 150px;
+  font-weight: 100;
+  line-height: 1;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .countdown-progress {
   margin-top: 8px;
 }
 
+.verification-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .expired-text {
-  color: #e88080 !important;
+  color: #ef4444 !important;
   font-weight: 600;
 }
 
 .back-link {
+  margin-top: 12px;
   opacity: 0.7;
   transition: opacity 0.2s;
 }
 
 .back-link:hover {
   opacity: 1;
+}
+
+.resend-link {
+  margin-top: 0 !important;
+  border: 2px solid currentColor !important;
+  padding: 2px 10px !important;
+  height: 30px !important;
+  opacity: 0.95;
+  --n-text-color: #c6ccb1 !important;
+  /* --n-text-color-hover: #b8bea9 !important;
+  --n-text-color-pressed: #aab09b !important;
+  --n-text-color-focus: #c6ccb1 !important; */
 }
 </style>

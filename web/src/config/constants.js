@@ -60,6 +60,8 @@ export const PAGINATION_CONFIG = {
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {
+    ACCESS_TOKEN: 'access_token',
+    DEVICE_ID: 'device_id',
     USERNAME: 'username',
     COMMAND_HISTORY_PREFIX: 'mc_cmd_history_',
 };

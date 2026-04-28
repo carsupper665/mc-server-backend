@@ -20,7 +20,7 @@ func SetUserRouter(router *gin.Engine) {
 		middleware.GloabalIPFilter(),
 		middleware.UserAgentFilter(),
 		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
-		middleware.ValidateJWT(),
+		middleware.ValidateJWTV2(),
 	)
 	{
 		user.POST("/cs", controller.CreateServer)

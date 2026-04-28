@@ -28,6 +28,7 @@ var (
 	Logger              *SysLogger
 	UseBetaVersion      bool
 	EL                  *EventLoop
+	RevokedTokens       *RevokedTokenRegistry
 )
 
 func LoadEnv() {
@@ -216,4 +217,8 @@ func IntiLogger(name string) error {
 	}
 	Logger = logger
 	return nil
+}
+
+func InitTokenRegister() {
+	RevokedTokens = NewRevokedTokenRegistry()
 }

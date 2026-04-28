@@ -172,7 +172,7 @@ const getActionIcon = (status) => {
               <n-skeleton text :repeat="1" style="width: 60%" />
               <n-skeleton text style="width: 40%; margin-top: 12px; height: 32px" />
             </template>
-            <n-statistic v-else label="SECURITY LEVEL" :value="(authStore.user?.username === 'root' || authStore.user?.role === 'admin') ? 'ROOT' : 'USER'">
+            <n-statistic v-else label="SECURITY LEVEL" :value="(authStore.user?.username === 'root' || authStore.user?.role === 6) ? 'ROOT' : 'USER'">
             </n-statistic>
           </n-card>
         </n-grid-item>

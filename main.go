@@ -54,6 +54,9 @@ func main() {
 		logger.Info(common.ColorBrightCyan + "Debug mode is enabled, running in Debug Mode" + common.ColorReset)
 	}
 
+	// 初始化棄用 token 表
+	common.InitTokenRegister()
+
 	err = controller.InitLogger()
 	if err != nil {
 		fmt.Println(err)
@@ -121,12 +124,6 @@ func main() {
 	// set router
 	router.SetRouter(server)
 
-	// get port
-	var port = os.Getenv("PORT")
-	if port == "" {
-		port = strconv.Itoa(*common.Port)
-	}
-
 	// unified manual shutdown trigger for non-signal paths.
 	manualCtx, manualCancel := context.WithCancel(context.Background())
 	defer manualCancel()
@@ -138,12 +135,25 @@ func main() {
 		})
 	}
 
+	// 背景事件 初始化
+	common.InitEventLoop()
+	common.EL.Start()
+	if err := common.EL.RegisterEvent("Clear-Tokens", common.RevokedTokens.ClearEvent, 7*time.Hour, -1); err != nil {
+		logger.Fatal("failed to register Clear-Tokens event: " + err.Error())
+		return
+	}
 	if err := eventRegister(triggerShutdown); err != nil {
 		logger.Fatal("failed to register events: " + err.Error())
 		return
 	}
 
 	time.Sleep(500 * time.Millisecond)
+
+	// get port and start server
+	var port = os.Getenv("PORT")
+	if port == "" {
+		port = strconv.Itoa(*common.Port)
+	}
 	logger.Infof("HTTP server listening on :%s, Ctrl+C To close.", port)
 
 	httpServer := &http.Server{
@@ -161,7 +171,7 @@ func main() {
 		serverErrCh <- nil
 	}()
 
-	// [graceful-shutdown] system signals are routed to the same shutdown path.
+	//  system signals are routed to the same shutdown path.
 	sigCtx, stopSig := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSig()
 
@@ -195,17 +205,15 @@ func eventRegister(triggerShutdown func(reason string)) error {
 		}
 		triggerShutdown("auto-update")
 	})
-	common.InitEventLoop()
 
 	if err := common.EL.RegisterEvent("Auto-Update", upf, 24*3*time.Hour, -1); err != nil {
 		logger.Errorf("failed to register update checker: %s", err.Error())
 	}
 
-	if err := common.EL.RegisterEvent("Mod-Version-AutoSync", service.SyncInstalledModVersions, 24*time.Hour, 1); err != nil {
+	if err := common.EL.RegisterEvent("Mod-Version-AutoSync", service.SyncInstalledModVersions, 24*time.Hour, -1); err != nil {
 		logger.Errorf("failed to register mod version auto-sync: %s", err.Error())
 	}
 
-	common.EL.Start()
 	return nil
 }
 

@@ -113,6 +113,47 @@ func UserAgentFilter() gin.HandlerFunc {
 	}
 }
 
+func ValidateJWTV2() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deviceID := c.Request.Header.Get(common.DeviceHeader)
+		if deviceID == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid device."})
+			return
+		}
+
+		token := c.Request.Header.Get("Authorization")
+		token = strings.TrimPrefix(token, "Bearer ")
+
+		Valid := common.ValidateUser(token, c.ClientIP())
+		if !Valid {
+			clearCookies(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		payload, err := common.GetJWTPayload(token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal error"})
+			return
+		}
+
+		rawUID, _ := payload["user_id"]
+		uid, parseErr := strconv.ParseUint(rawUID.(string), 10, 32)
+		if parseErr != nil {
+			common.LogError(c.Request.Context(), fmt.Sprintf("Parse user_id error: %v", parseErr))
+			// clear cookies
+			clearCookies(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.Set("uintId", uint(uid))
+		c.Set("stringId", rawUID)
+		c.Set("payload", payload)
+
+		c.Next()
+	}
+}
+
 func ValidateJWT() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(common.JwtCookieName)

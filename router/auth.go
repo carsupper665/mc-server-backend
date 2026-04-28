@@ -16,6 +16,8 @@ import (
 func SetAuthRouter(router *gin.Engine) {
 	router.Use(middleware.CORS())
 
+	lc := controller.NewChallengeStore()
+
 	auth := router.Group("/Authentication")
 	auth.Use(
 		gzip.Gzip(gzip.DefaultCompression),
@@ -24,10 +26,13 @@ func SetAuthRouter(router *gin.Engine) {
 		middleware.GloabalIPFilter(),
 	)
 	{
-		auth.POST("/login", controller.Login)
-		auth.POST("/verify", controller.VerifyLogin)
-		auth.POST("/app/verify", controller.VerifyLogin)
-		auth.POST("/app/login", controller.AppLogin)
+		//auth.POST("/login", controller.Login)
+		auth.POST("/login", lc.ChallengeLogin)
+		//auth.POST("/verify", controller.VerifyLogin)
+		auth.GET("/verify", lc.UrlVerifyLogin)
+		auth.GET("/challenge", lc.ExchangeToken)
+		//auth.POST("/app/verify", controller.VerifyLogin)// 代刪除
+		//auth.POST("/app/login", controller.AppLogin) // 代刪除
 		//auth.POST("/oidc/login", controller.OIDCLogin)
 	}
 }

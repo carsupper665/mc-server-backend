@@ -9,6 +9,12 @@ const routes = [
         meta: { guest: true }
     },
     {
+        path: '/login/callback',
+        name: 'LoginCallback',
+        component: () => import('../views/LoginCallbackView.vue'),
+        meta: { guest: true }
+    },
+    {
         path: '/',
         component: () => import('../layout/MainLayout.vue'),
         children: [
@@ -43,6 +49,11 @@ const routes = [
             }
         ],
         meta: { auth: true }
+    },
+    {
+        path: '/:pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => import('../views/NotFoundView.vue')
     }
 ];
 
@@ -53,10 +64,11 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
     const authStore = useAuthStore();
+    const isLoginCallback = to.name === 'LoginCallback';
 
     if (!authStore.user && to.meta.auth) {
         try {
-            await authStore.fetchUser();
+            await authStore.fetchUser({ skipAuthRedirect: true });
         } catch (e) {
             console.error('Failed to fetch user context:', e);
             // If fetch fails, user is likely not authenticated
@@ -65,7 +77,7 @@ router.beforeEach(async (to, from, next) => {
 
     if (to.meta.auth && !authStore.isLoggedIn) {
         next('/login');
-    } else if (to.meta.guest && authStore.isLoggedIn) {
+    } else if (to.meta.guest && authStore.isLoggedIn && !isLoginCallback) {
         next('/');
     } else {
         next();

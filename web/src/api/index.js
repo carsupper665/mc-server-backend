@@ -2,6 +2,7 @@ import axios from 'axios';
 import { createDiscreteApi } from 'naive-ui';
 import { sanitizeErrorMessage } from '../utils/errorMapping';
 import { triggerBackoff, resetBackoff } from '../composables/useRateLimitGuard';
+import { clearAuthSession, ensureDeviceId, getAccessToken } from '../utils/authStorage';
 
 // 建立獨立的 message API (可在非 Vue 元件中使用)
 const { message } = createDiscreteApi(['message'], {
@@ -33,23 +34,91 @@ const silentErrors = [
 const api = axios.create({
     baseURL: '',
     timeout: 30000, // 增加 timeout 以容納慢速 API
-    withCredentials: true,
 });
 
 api.defaults.headers.common['C-MPMC-WEB-Header'] = 'mpmc-web-ua-v1';
+const setHeaderValue = (headers, key, value) => {
+    if (!headers || value === undefined || value === null || value === '') return;
+    if (typeof headers.set === 'function') {
+        headers.set(key, value);
+        return;
+    }
+    headers[key] = value;
+};
+
+const removeHeaderValue = (headers, key) => {
+    if (!headers) return;
+    if (typeof headers.delete === 'function') {
+        headers.delete(key);
+        return;
+    }
+    delete headers[key];
+};
+
+const toMetaResponse = (response) => ({
+    status: response.status,
+    statusText: response.statusText,
+    data: response.data,
+    headers: response.headers,
+    config: response.config
+});
+
+// Keep backward compatibility: default still returns response.data.
+// Use withMeta.* when caller needs status code handling (e.g. login 200/202 flow).
+api.withMeta = {
+    get(url, config = {}) {
+        return api.get(url, { ...config, returnMeta: true });
+    },
+    post(url, data, config = {}) {
+        return api.post(url, data, { ...config, returnMeta: true });
+    },
+    put(url, data, config = {}) {
+        return api.put(url, data, { ...config, returnMeta: true });
+    },
+    patch(url, data, config = {}) {
+        return api.patch(url, data, { ...config, returnMeta: true });
+    },
+    delete(url, config = {}) {
+        return api.delete(url, { ...config, returnMeta: true });
+    }
+};
+
+api.interceptors.request.use((config) => {
+    const headers = config.headers || {};
+    const token = config.skipAuthToken === true ? '' : getAccessToken();
+    const deviceId = ensureDeviceId();
+
+    setHeaderValue(headers, 'C-MPMC-WEB-Header', api.defaults.headers.common['C-MPMC-WEB-Header']);
+    setHeaderValue(headers, 'X-Device-ID', deviceId);
+
+    if (token) {
+        setHeaderValue(headers, 'Authorization', `Bearer ${token}`);
+    } else {
+        removeHeaderValue(headers, 'Authorization');
+    }
+
+    config.headers = headers;
+    return config;
+});
+
 // Response interceptor
 api.interceptors.response.use(
     (response) => {
         // 請求成功，重置退避計數
         resetBackoff();
+        if (response.config?.returnMeta) {
+            return toMetaResponse(response);
+        }
         return response.data;
     },
     (error) => {
         const status = error.response?.status;
         const url = error.config?.url || '';
+        const reqSilent = error.config?.silent === true;
+        const skipAuthRedirect = error.config?.skipAuthRedirect === true;
 
         // 檢查是否為靜默錯誤
-        const isSilent = silentErrors.some(pattern => url.includes(pattern));
+        const isSilent = reqSilent || silentErrors.some(pattern => url.includes(pattern));
 
         // 429 Rate Limit - 觸發指數退避
         if (status === 429) {
@@ -60,9 +129,9 @@ api.interceptors.response.use(
             }
         } else if (status === 401) {
             // 未授權：清除本地狀態並重導向
-            localStorage.removeItem('username');
+            clearAuthSession();
 
-            if (!window.location.pathname.startsWith('/login')) {
+            if (!skipAuthRedirect && !window.location.pathname.startsWith('/login')) {
                 message.warning('登入已過期，正在跳轉...');
                 setTimeout(() => {
                     window.location.href = '/login';

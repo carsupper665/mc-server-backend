@@ -83,10 +83,15 @@ const userOptions = [
   {
     label: 'Logout',
     key: 'logout',
-    icon: () => h(NIcon, null, { default: () => h(LogoutOutlined) }),
-    onClick: () => authStore.logout()
+    icon: () => h(NIcon, null, { default: () => h(LogoutOutlined) })
   }
 ];
+
+const handleUserSelect = (key) => {
+  if (key === 'logout') {
+    authStore.logout();
+  }
+};
 
 // 動態麵包屑
 const breadcrumbs = computed(() => {
@@ -175,7 +180,7 @@ const goToSystem = () => {
           </div>
           
           <n-space align="center" :size="20">
-            <n-dropdown :options="userOptions">
+            <n-dropdown :options="userOptions" @select="handleUserSelect">
               <div class="user-profile">
                 <n-avatar round size="small" :style="{ backgroundColor: '#18a058' }">
                   {{ authStore.user?.username?.charAt(0).toUpperCase() }}

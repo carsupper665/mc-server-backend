@@ -1,17 +1,46 @@
 import { defineStore } from 'pinia';
 import api from '../api';
+import {
+    buildUserFromToken,
+    clearAuthSession,
+    getAccessToken,
+    getTokenPayload,
+    isTokenExpired,
+    setAccessToken,
+    setStoredUsername,
+} from '../utils/authStorage';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isEmail = (value) => emailPattern.test(String(value || '').trim());
+
+const parseCallbackPayload = (query = {}) => {
+    let code = String(query.code || '').trim();
+    let id = String(query.id || '').trim();
+
+    // Backward-compatible parser for malformed redirect:
+    // /login/callback?code=<authCode>?=id<id>
+    if (!id && code) {
+        const markers = ['?=id', '?id=', '&id='];
+        for (const marker of markers) {
+            const idx = code.indexOf(marker);
+            if (idx !== -1) {
+                id = code.slice(idx + marker.length).trim();
+                code = code.slice(0, idx).trim();
+                break;
+            }
+        }
+    }
+
+    return { code, id };
+};
 
 /**
  * 認證 Store
  * 
  * @security 安全性注意事項：
- * - Token 透過 httpOnly cookie 由後端管理（建議後端設定 SameSite=Strict）
- * - 前端不直接存取 token，僅保存 username 用於 UI 顯示
- * - 敏感操作使用 withCredentials: true 確保 cookie 自動附帶
- * - 建議後端實作 CSRF token 驗證以增強安全性
+ * - Access token 由前端保存並透過 Authorization: Bearer 傳送
+ * - 所有受保護 API 一律附帶 X-Device-ID 與 C-MPMC-WEB-Header
+ * - 登入後以 JWT payload 重建 user context，避免再依賴 cookie session
  */
 
 export const useAuthStore = defineStore('auth', {
@@ -21,26 +50,49 @@ export const useAuthStore = defineStore('auth', {
     }),
     getters: {
         isLoggedIn: (state) => !!state.user,
-        isAdmin: (state) => state.user?.role === 100, // RoleRootUser
+        isAdmin: (state) => state.user?.role === 6, // RoleRootUser
     },
     actions: {
+        clearAuthState() {
+            this.user = null;
+            clearAuthSession();
+        },
         async login(username, password) {
             this.loading = true;
             try {
                 const payload = isEmail(username)
                     ? { email: username, password }
                     : { username, password };
-                const res = await api.post('/Authentication/login', payload);
+                const res = await api.withMeta.post('/Authentication/login', payload, {
+                    skipAuthToken: true
+                });
 
-                // If backend returns 202, verification is needed
-                if (res.message && res.message.includes('verification code sent')) {
-                    return res;
+                if (res.status === 202) {
+                    setStoredUsername(username);
+                    return {
+                        status: res.status,
+                        data: res.data,
+                        requiresVerification: true
+                    };
                 }
 
-                // Login successful (or already logged in)
-                localStorage.setItem('username', username);
-                await this.fetchUser();
-                return res;
+                if (res.status < 200 || res.status >= 300) {
+                    throw new Error(`Unexpected login status: ${res.status}`);
+                }
+
+                const token = res.data?.token;
+                if (!token) {
+                    throw new Error('伺服器沒有回傳 access token');
+                }
+
+                setStoredUsername(username);
+                setAccessToken(token);
+                await this.fetchUser({ skipRemoteCheck: true });
+                return {
+                    status: res.status,
+                    data: res.data,
+                    requiresVerification: false
+                };
             } finally {
                 this.loading = false;
             }
@@ -48,36 +100,91 @@ export const useAuthStore = defineStore('auth', {
         async verifyCode(code) {
             this.loading = true;
             try {
-                const res = await api.post('/Authentication/verify', { code });
+                const res = await api.withMeta.post('/Authentication/verify', { code }, {
+                    skipAuthToken: true
+                });
+                if (res.status < 200 || res.status >= 300) {
+                    throw new Error(`Unexpected verify status: ${res.status}`);
+                }
                 await this.fetchUser();
-                return res;
+                return {
+                    status: res.status,
+                    data: res.data
+                };
+            } finally {
+                this.loading = false;
+            }
+        },
+        async exchangeCallbackToken(query) {
+            this.loading = true;
+            try {
+                const { code, id } = parseCallbackPayload(query);
+                if (!code || !id) {
+                    throw new Error('登入連結無效或已損壞');
+                }
+
+                const res = await api.withMeta.get('/Authentication/challenge', {
+                    params: { code, id },
+                    skipAuthRedirect: true,
+                    silent: true,
+                    skipAuthToken: true
+                });
+                if (res.status < 200 || res.status >= 300) {
+                    throw new Error(`Unexpected callback status: ${res.status}`);
+                }
+
+                const token = res.data?.token;
+                if (!token) {
+                    throw new Error('伺服器沒有回傳 access token');
+                }
+
+                setAccessToken(token);
+                await this.fetchUser({ skipRemoteCheck: true });
+                return {
+                    status: res.status,
+                    data: res.data
+                };
             } finally {
                 this.loading = false;
             }
         },
         async logout() {
             try {
-                await api.post('/logout');
+                await api.post('/logout', null, {
+                    skipAuthRedirect: true,
+                    silent: true
+                });
             } finally {
-                this.user = null;
-                localStorage.removeItem('username');
+                this.clearAuthState();
                 window.location.href = '/login';
             }
         },
-        async fetchUser() {
-            try {
-                // Use /user/myservers just to validate the session
-                await api.get('/user/myservers');
+        async fetchUser(options = {}) {
+            const token = getAccessToken();
+            const payload = getTokenPayload(token);
 
-                // Since we can't get profile from backend, rely on localStorage or default
-                const storedName = localStorage.getItem('username') || 'Operator';
-                this.user = {
-                    username: storedName,
-                    role: 1 // Assume normal user, we can't know for sure without API
-                };
+            if (!token || !payload || isTokenExpired(payload)) {
+                this.clearAuthState();
+                throw new Error('Access token missing or expired');
+            }
+
+            try {
+                if (!options.skipRemoteCheck) {
+                    await api.get('/user/myservers', {
+                        silent: true,
+                        skipAuthRedirect: options.skipAuthRedirect === true
+                    });
+                }
+
+                const user = buildUserFromToken(token);
+                if (!user) {
+                    throw new Error('Invalid access token payload');
+                }
+
+                this.user = user;
+                return user;
             } catch (err) {
-                this.user = null;
-                localStorage.removeItem('username');
+                this.clearAuthState();
                 throw err;
             }
         }

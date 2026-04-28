@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '../api';
+import { ensureDeviceId, getAccessToken } from '../utils/authStorage';
 
 const jobStreams = new Map();
 
@@ -38,6 +39,14 @@ export const useModInstallStore = defineStore('modInstall', {
       if (headerValue) {
         headers['C-MPMC-WEB-Header'] = headerValue;
       }
+      const token = getAccessToken();
+      const deviceId = ensureDeviceId();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      if (deviceId) {
+        headers['X-Device-ID'] = deviceId;
+      }
 
       const decoder = new TextDecoder();
       let buffer = '';
@@ -66,7 +75,6 @@ export const useModInstallStore = defineStore('modInstall', {
       fetch(url, {
         method: 'GET',
         headers,
-        credentials: 'include',
         signal: controller.signal
       })
         .then((response) => {
