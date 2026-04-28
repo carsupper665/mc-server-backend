@@ -101,7 +101,7 @@ func UserAgentFilter() gin.HandlerFunc {
 		webUa := c.GetHeader(common.WebHeader)
 
 		for _, a := range allowed {
-			if strings.Contains(ua, a) && strings.Contains(webUa, allowed[0]) {
+			if strings.Contains(ua, a) || strings.Contains(webUa, allowed[0]) {
 				common.LogDebug(c.Request.Context(), "User-Agent allowed: "+ua)
 				c.Next()
 				return
@@ -109,6 +109,7 @@ func UserAgentFilter() gin.HandlerFunc {
 		}
 
 		// 其他一律拒絕
+		common.LogDebug(c.Request.Context(), "User-Agent Blocked: "+ua)
 		c.AbortWithStatus(http.StatusForbidden)
 	}
 }
