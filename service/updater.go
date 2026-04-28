@@ -9,15 +9,12 @@ import (
 	"go-backend/common"
 	"go-backend/model"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mattn/go-colorable"
 )
 
 const (
@@ -112,31 +109,25 @@ func newLogger(console, file io.Writer) *UpdateLogger {
 	}
 }
 
-func getLogger(logFile string) *UpdateLogger {
-	if *common.LogDir != "" {
-		logFilePath := fmt.Sprintf("%s/%s", *common.LogDir, logFile)
-		file, err := os.OpenFile(logFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatal("failed to open log file:", err)
-		}
-		stdout := colorable.NewColorableStdout()
-		return newLogger(stdout, file)
-	}
-	return nil
-}
+//func getLogger(logFile string) *UpdateLogger {
+//	if *common.LogDir != "" {
+//		logFilePath := fmt.Sprintf("%s/%s", *common.LogDir, logFile)
+//		file, err := os.OpenFile(logFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+//		if err != nil {
+//			log.Fatal("failed to open log file:", err)
+//		}
+//		stdout := colorable.NewColorableStdout()
+//		return newLogger(stdout, file)
+//	}
+//	return nil
+//}
 
-// CheckForUpdates 初次啟動時的更新檢查
-func CheckForUpdates() error {
-	logger, err := common.NewSysLogger("updater", logPath, 50000)
-	if logger == nil || err != nil {
-		_ = model.WriteUpdateErrorLog("startup logger failed")
-		return errors.New("startup logger failed")
-	}
-
+// performUpdate 執行更新檢查和下載
+func performUpdate(logger *common.SysLogger) error {
 	_ = model.SetLastCheck(time.Now())
 
 	if UpdaterStatus.IsRunning() {
-		logger.Info("update check already running, skipping...")
+		logger.Info("update already running, skipping...")
 		return ErrAlreadyStarted
 	}
 
@@ -144,15 +135,14 @@ func CheckForUpdates() error {
 	defer UpdaterStatus.SetRunning(false)
 
 	if !common.GetEnvOrDefaultBool("AUTO_UPDATE", false) {
-		logger.Info("Auto update is disabled")
 		_ = model.SetStatus("auto update disabled")
 		return ErrUpdateDisabled
 	}
 
-	logger.Info("Checking for updates...")
-
-	// 獲取最新版本資訊
+	// 獲取最新版本
 	var r *release
+	var err error
+
 	if !common.UseBetaVersion {
 		r, err = fetchLatestRelease(logger)
 		if err != nil {
@@ -165,12 +155,12 @@ func CheckForUpdates() error {
 		}
 	}
 
-	if r.TagName == common.Version+common.Build {
-		logger.Info("You are running the latest version: " + common.Version + common.Build)
+	if strings.EqualFold(r.TagName, common.Version+common.Build) {
 		_ = model.SetStatus("latest version")
 		return ErrAlreadyLatest
 	}
 
+	// 下載並應用更新
 	logger.Info("New version available: " + r.TagName)
 	dlUrl := r.Assets[0].BrowserDownloadURL
 	hashString := strings.TrimPrefix(r.Assets[0].Digest, "sha256:")
@@ -183,9 +173,20 @@ func CheckForUpdates() error {
 	_ = model.SetStatus("updated to " + r.TagName)
 	_ = model.UpdateTime()
 	_ = model.ClearUpdateError()
-	logger.Info("Update applied successfully 🎉")
 
 	return nil
+}
+
+// CheckForUpdates 初次啟動時的更新檢查
+func CheckForUpdates() error {
+	logger, err := common.NewSysLogger("updater", logPath, 50000)
+	if logger == nil || err != nil {
+		_ = model.WriteUpdateErrorLog("startup logger failed")
+		return errors.New("startup logger failed")
+	}
+
+	err = performUpdate(logger)
+	return err
 }
 
 // fetchLatestRelease 獲取最新版本資訊
@@ -377,59 +378,4 @@ func BuildUpdateChecker(onUpdateSuccess func()) func() error {
 		}
 		return nil
 	}
-}
-
-// performUpdate 執行更新檢查和下載
-func performUpdate(logger *common.SysLogger) error {
-	_ = model.SetLastCheck(time.Now())
-
-	if UpdaterStatus.IsRunning() {
-		logger.Info("update already running, skipping...")
-		return ErrAlreadyStarted
-	}
-
-	UpdaterStatus.SetRunning(true)
-	defer UpdaterStatus.SetRunning(false)
-
-	if !common.GetEnvOrDefaultBool("AUTO_UPDATE", false) {
-		_ = model.SetStatus("auto update disabled")
-		return ErrUpdateDisabled
-	}
-
-	// 獲取最新版本
-	var r *release
-	var err error
-
-	if !common.UseBetaVersion {
-		r, err = fetchLatestRelease(logger)
-		if err != nil {
-			return err
-		}
-	} else {
-		r, err = fetchLatestBeta(logger)
-		if err != nil {
-			return err
-		}
-	}
-
-	if strings.EqualFold(r.TagName, common.Version+common.Build) {
-		_ = model.SetStatus("latest version")
-		return ErrAlreadyLatest
-	}
-
-	// 下載並應用更新
-	logger.Info("New version available: " + r.TagName)
-	dlUrl := r.Assets[0].BrowserDownloadURL
-	hashString := strings.TrimPrefix(r.Assets[0].Digest, "sha256:")
-
-	if err := downloadAndApplyUpdate(dlUrl, hashString, logger); err != nil {
-		_ = model.SetStatus("update failed")
-		return err
-	}
-
-	_ = model.SetStatus("updated to " + r.TagName)
-	_ = model.UpdateTime()
-	_ = model.ClearUpdateError()
-
-	return nil
 }
