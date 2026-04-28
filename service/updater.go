@@ -349,10 +349,6 @@ func downloadAndApplyUpdate(url, expectedHash string, logger *common.SysLogger) 
 	return nil
 }
 
-func StartUpdateChecker(interval time.Duration, onUpdateSuccess func()) {
-	go updateChecker(interval, onUpdateSuccess)
-}
-
 func BuildUpdateChecker(onUpdateSuccess func()) func() error {
 	return func() error {
 		logger, err := common.NewSysLogger("checker", checkerLog, 50000)
@@ -380,44 +376,6 @@ func BuildUpdateChecker(onUpdateSuccess func()) func() error {
 			return nil
 		}
 		return nil
-	}
-}
-
-// updateChecker 背景更新檢查器
-func updateChecker(interval time.Duration, onUpdateSuccess func()) {
-	logger, err := common.NewSysLogger("checker", checkerLog, 50000)
-	if logger == nil || err != nil {
-		common.SysError("failed to start update checker logger")
-		return
-	}
-
-	logger.Info(fmt.Sprintf("Update checker started, interval: %s", interval))
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			logger.Info("Running scheduled update check...")
-
-			if err := performUpdate(logger); err != nil {
-				if errors.Is(err, ErrAlreadyLatest) {
-					logger.Info("Already at latest version")
-				} else if errors.Is(err, ErrUpdateDisabled) {
-					logger.Info("Auto update is disabled")
-				} else {
-					logger.Error("Update check failed: " + err.Error())
-				}
-			} else {
-				// 更新成功
-				logger.Info("Update successful! Triggering restart...")
-				if onUpdateSuccess != nil {
-					onUpdateSuccess()
-				}
-				return
-			}
-		}
 	}
 }
 
@@ -454,7 +412,7 @@ func performUpdate(logger *common.SysLogger) error {
 		}
 	}
 
-	if r.TagName == common.Version+common.Build {
+	if strings.EqualFold(r.TagName, common.Version+common.Build) {
 		_ = model.SetStatus("latest version")
 		return ErrAlreadyLatest
 	}
