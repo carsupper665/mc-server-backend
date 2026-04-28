@@ -478,7 +478,8 @@ func (s *EmailChallengeStore) VerificationEmail(c *gin.Context, email, id, usern
 		return err
 	}
 	code := s.CreateLoginChallenge(id, email)
-	defaultUrl := "http://localhost:" + common.GetEnvOrDefaultString("PORT", "8080")
+	baseBackendUrl := common.GetEnvOrDefaultString("BACKEND_URL", `http://localhost:`)
+	defaultUrl := baseBackendUrl + common.GetEnvOrDefaultString("PORT", "8080")
 	url := fmt.Sprintf("%s/Authentication/verify?code=%s&eh=%s&id=%s", defaultUrl, code, hashEmail, id)
 	htmlMsg := fmt.Sprintf(
 		`<!DOCTYPE html>
