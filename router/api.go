@@ -110,7 +110,6 @@ func SetAPIRouter(router *gin.Engine) {
 
 	}
 	serverMod := serverApi.Group("/mod")
-	// New Features TODO list
 	{
 		serverMod.POST("/add/:server_id", c.AddMod)
 		serverMod.GET("/remove/:server_id", c.DelMod)

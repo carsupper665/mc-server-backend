@@ -13,9 +13,10 @@ const (
 )
 
 const (
-	JwtCookieName    = "au4ul4"
-	JwtExpireSeconds = 24 * 60 * 60 * 7
-	DeviceHeader     = "X-Device-ID"
+	JwtCookieName        = "au4ul4"
+	JwtExpireSeconds     = 24 * 60 * 60 * 7
+	AdminTokenExpSeconds = 5 * 60 * 60
+	DeviceHeader         = "X-Device-ID"
 )
 
 const (

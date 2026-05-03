@@ -96,6 +96,15 @@ func AdminOnly() gin.HandlerFunc {
 			return
 		}
 
+		adminToken := c.Request.Header.Get("A-OP-Token")
+
+		// 驗證admin token
+		ok := common.ValidateUser(adminToken, c.ClientIP())
+		if !ok {
+			c.AbortWithStatusJSON(401, gin.H{"message": "Please verify your identity before continuing this operation.", "code": "REFLASH_TOKEN"})
+			return
+		}
+
 		c.Next()
 	}
 }

@@ -125,6 +125,11 @@ func ValidateJWTV2() gin.HandlerFunc {
 		token := c.Request.Header.Get("Authorization")
 		token = strings.TrimPrefix(token, "Bearer ")
 
+		if common.RevokedTokens.IsRevoked(token) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
 		Valid := common.ValidateUser(token, c.ClientIP())
 		if !Valid {
 			clearCookies(c)
