@@ -69,8 +69,8 @@ export const useVersionCacheStore = defineStore('versionCache', {
       try {
         // 並行請求 Vanilla 和 Fabric 版本
         const [vanillaRes, fabricRes] = await Promise.allSettled([
-          api.get('/mc-api/vinfo'),
-          api.get('/mc-api/finfo'),
+          api.get('/api/v1/public/vinfo'),
+          api.get('/api/v1/public/finfo'),
         ]);
 
         // 處理 Vanilla 版本

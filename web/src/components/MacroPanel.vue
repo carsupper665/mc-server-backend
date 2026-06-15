@@ -181,7 +181,7 @@ const executeMacro = async macro => {
         term?.writeln(`\x1b[1;36m▸ [MACRO] ${line}\x1b[0m`);
         emit('update:status', { active: true, message: `執行: ${line}`, type: 'info' });
         try {
-          await api.post(`/mc-api/a/cmd/${props.serverId}`, { command: line });
+          await api.post(`/api/v1/server/cmd/${props.serverId}`, { command: line });
         } catch (err) {
           term?.writeln(`\x1b[1;31m✗ [MACRO] 指令執行失敗: ${line}\x1b[0m`);
         }

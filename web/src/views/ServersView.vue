@@ -65,7 +65,7 @@ const fetchServers = async () => {
         let status = 'Unknown';
         try {
             // Use POST as per backend controller definition
-            const statusRes = await api.post(`/mc-api/a/status/${srv.server_id}`);
+            const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`);
             // Check for status field in response
             if (statusRes && statusRes.status) {
                 status = statusRes.status;
@@ -90,7 +90,7 @@ const fetchServers = async () => {
 
 const fetchVersions = async () => {
   try {
-    let res = await api.get('/mc-api/vinfo');
+    let res = await api.get('/api/v1/public/vinfo');
     
     // Defensive check: if response is wrapped in { versions: ... } or { data: ... }
     if (res.versions) res = res.versions;
@@ -139,7 +139,7 @@ const handleCreate = async () => {
       if (isDeploying.value) deployMessage.value = '正在配置伺服器檔案...';
     }, 5000);
     
-    const res = await api.post('/mc-api/a/create', createForm.value);
+    const res = await api.post(`/api/v1/server/create`, createForm.value);
     message.success('伺服器建立成功！');
     showCreateModal.value = false;
     

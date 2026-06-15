@@ -252,3 +252,11 @@ func UpdatePassword(userID uint, newPassword string) error {
 		"salt":     salt,
 	}).Error
 }
+
+func GetAllUserData() ([]User, error) {
+	var users []User
+	err := DB.
+		Model(&User{}).
+		Find(&users).Error
+	return users, err
+}

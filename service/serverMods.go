@@ -71,7 +71,7 @@ var (
 	AlreadyInsErr   = errors.New("mod already installed")
 )
 
-func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bool) error {
+func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, useBeta, autoUpdate bool) error {
 	// check mod ver is Support
 	if modLoader == Vanilla {
 		return errors.New("vanilla can't install mod ")
@@ -83,7 +83,7 @@ func AddMod(sid, workDir, modLoader, MCVersion, modID, ver string, autoUpdate bo
 		return AlreadyInsErr
 	}
 
-	modInf, err := getLatestOrSpecific(modID, modLoader, MCVersion, ver)
+	modInf, err := getLatestOrSpecific(modID, modLoader, MCVersion, ver, useBeta)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func fetchModVersionByID(versionID string) (*ModrinthVersion, error) {
 }
 
 // Get Latest or Specific
-func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string) (*ModrinthVersion, error) {
+func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string, useBeta bool) (*ModrinthVersion, error) {
 	base := fmt.Sprintf("https://api.modrinth.com/v2/project/%s/version", projectID)
 
 	// 建 query 參數，注意 value 仍然是 JSON array 字串
@@ -160,6 +160,7 @@ func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string) (*Modri
 	req.Header.Set("User-Agent", "carsupper665/mc-server-backend (contact: carsuooer665@hgmail.com)")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		common.Logger.Debugf("getLatestOrSpecific request failed: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -170,10 +171,25 @@ func getLatestOrSpecific(projectID, loader, gameVersion, modeVer string) (*Modri
 
 	var versions []ModrinthVersion
 	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
+		common.Logger.Debugf("Failed to fetch latest version: %v", err)
 		return nil, err
 	}
 
 	if len(versions) == 0 {
+		return nil, UnSupportModErr
+	}
+
+	filter := make([]ModrinthVersion, 0, len(versions))
+	for _, v := range versions {
+		vType := strings.ToLower(v.VersionType)
+
+		if vType == "release" || (useBeta && vType == "beta") {
+			filter = append(filter, v)
+		}
+
+	}
+
+	if len(filter) == 0 {
 		return nil, UnSupportModErr
 	}
 

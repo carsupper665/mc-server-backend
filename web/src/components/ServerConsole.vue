@@ -374,7 +374,7 @@ const sendCommand = async () => {
   term.value.writeln(`\r\n> \x1b[1m${cmd}\x1b[0m`);
 
   try {
-    await api.post(`/mc-api/a/cmd/${props.serverId}`, {
+    await api.post(`/api/v1/server/cmd/${props.serverId}`, {
       command: cmd
     });
     // 成功不需特別提示，日誌會顯示結果

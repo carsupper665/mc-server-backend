@@ -32,6 +32,7 @@ type InstallRequest struct {
 	GameVer    string
 	ModID      string
 	VersionID  string
+	UseBeta    bool
 	AutoUpdate bool
 	Source     string
 }
@@ -125,7 +126,7 @@ var modNameCache = struct {
 
 // EnqueueModInstall enqueues a mod install request (with dependency resolution).
 // It returns a job that can be waited on for completion.
-func EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID string, autoUpdate bool) (*InstallJob, error) {
+func EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID string, beta, autoUpdate bool) (*InstallJob, error) {
 	if serverID == "" || modID == "" {
 		return nil, errors.New("serverID and modID are required")
 	}
@@ -137,6 +138,7 @@ func EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID s
 		GameVer:    gameVer,
 		ModID:      modID,
 		VersionID:  versionID,
+		UseBeta:    beta,
 		AutoUpdate: autoUpdate,
 		Source:     InstallSourceUser,
 	}
@@ -145,8 +147,8 @@ func EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID s
 }
 
 // EnqueueModInstallAndWait enqueues a job and blocks until completion.
-func EnqueueModInstallAndWait(serverID, workDir, modLoader, gameVer, modID, versionID string, autoUpdate bool) error {
-	job, err := EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID, autoUpdate)
+func EnqueueModInstallAndWait(serverID, workDir, modLoader, gameVer, modID, versionID string, beta, autoUpdate bool) error {
+	job, err := EnqueueModInstall(serverID, workDir, modLoader, gameVer, modID, versionID, beta, autoUpdate)
 	if err != nil {
 		return err
 	}
@@ -231,6 +233,7 @@ func (q *installQueue) worker(serverID string) {
 
 		plan, err := buildInstallPlan(job.Requests)
 		if err != nil {
+			common.Logger.Errorf("build install plan failed: %v", err)
 			job.setStatus(JobFailed, err)
 			q.publishJobEvent(job, "failed", InstallRequest{}, job.Progress, "resolve failed", err)
 			CloseInstallEvents(job.ID)
@@ -242,6 +245,7 @@ func (q *installQueue) worker(serverID string) {
 		job.mu.Unlock()
 
 		if err := executeInstallPlan(job, plan); err != nil {
+			common.Logger.Errorf("execute install plan failed: %v", err)
 			job.setStatus(JobFailed, err)
 			q.publishJobEvent(job, "failed", InstallRequest{}, job.Progress, "install failed", err)
 			CloseInstallEvents(job.ID)
@@ -502,12 +506,13 @@ func resolveVersion(req InstallRequest, cache map[string]*ModrinthVersion) (*Mod
 	if req.VersionID != "" {
 		version, err = fetchModVersionByID(req.VersionID)
 		if err != nil && req.ModID != "" {
-			version, err = getLatestOrSpecific(req.ModID, req.ModLoader, req.GameVer, req.VersionID)
+			version, err = getLatestOrSpecific(req.ModID, req.ModLoader, req.GameVer, req.VersionID, req.UseBeta)
 		}
 	} else {
-		version, err = getLatestOrSpecific(req.ModID, req.ModLoader, req.GameVer, "")
+		version, err = getLatestOrSpecific(req.ModID, req.ModLoader, req.GameVer, "", req.UseBeta)
 	}
 	if err != nil {
+		common.Logger.Errorf("resolve version error: %s", err)
 		return nil, err
 	}
 
@@ -531,7 +536,7 @@ func executeInstallPlan(job *InstallJob, plan *InstallPlan) error {
 	for _, req := range plan.Order {
 		pct := progress(done, total)
 		modInstallQueue.publishJobEvent(job, "downloading", req, pct, "downloading", nil)
-		err := AddMod(req.ServerID, req.WorkDir, req.ModLoader, req.GameVer, req.ModID, req.VersionID, req.AutoUpdate)
+		err := AddMod(req.ServerID, req.WorkDir, req.ModLoader, req.GameVer, req.ModID, req.VersionID, req.UseBeta, req.AutoUpdate)
 		if err != nil {
 			common.Logger.Errorf("failed to add mod install plan: %v", err)
 			if errors.Is(err, AlreadyInsErr) {

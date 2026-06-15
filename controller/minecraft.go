@@ -614,6 +614,7 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 type AddModRequest struct {
 	ModID      string `json:"mod_id" binding:"required"`
 	VersionID  string `json:"version_id"`
+	UseBeta    bool   `json:"use_beta" binding:"optional"`
 	AutoUpdate bool   `json:"auto_update"` // 是否自動更新
 }
 
@@ -653,6 +654,7 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 			serverData.MCVersion,
 			req.ModID,
 			req.VersionID,
+			req.UseBeta,
 			req.AutoUpdate,
 		)
 		if err != nil {
@@ -671,6 +673,7 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 		serverData.MCVersion,
 		req.ModID,
 		req.VersionID,
+		req.UseBeta,
 		req.AutoUpdate,
 	); err != nil {
 		common.LogError(c.Request.Context(), "install Mod error: "+err.Error())

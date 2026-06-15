@@ -65,7 +65,7 @@ const fetchDashboardData = async () => {
     
     await Promise.all(servers.map(async (srv) => {
       try {
-        const statusRes = await api.post(`/mc-api/a/status/${srv.server_id}`);
+        const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`);
         const status = (statusRes && statusRes.status) ? statusRes.status : statusRes;
         
         if (status && status.toLowerCase() === 'running') {

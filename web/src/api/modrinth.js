@@ -102,7 +102,18 @@ export async function getProjectVersions(idOrSlug, { loaders = [], game_versions
         params.game_versions = JSON.stringify(game_versions);
     }
 
-    const response = await modrinthApi.get(`/project/${idOrSlug}/version`, { params });
+    const config = {
+        params
+    };
+
+    const url = modrinthApi.getUri({
+        url: `/project/${idOrSlug}/version`,
+        ...config
+    });
+
+    console.log("Modrinth query URL:", url);
+
+    const response = await modrinthApi.get(`/project/${idOrSlug}/version`, config);
     return response.data;
 }
 

@@ -94,7 +94,7 @@ let smartPolling = null;
 
 const fetchServerDetail = async () => {
   try {
-    const res = await api.post(`/mc-api/a/status/${props.id}`);
+    const res = await api.get(`/api/v1/server/status/${props.id}`);
 
 
     // API interceptor 已返回 response.data，所以 res 就是實際資料
@@ -123,7 +123,7 @@ const fetchServerDetail = async () => {
 const fetchLogs = async () => {
   if (!isRunning.value) return; // 伺服器未運行時不獲取日誌
   try {
-    const res = await api.get(`/server-api/a/log/${props.id}`);
+    const res = await api.get(`/api/v1/server/log/${props.id}`);
     // API interceptor 已返回 response.data
     const logData = res.logs
     if (logData && typeof logData === 'string' && consoleRef.value) {
@@ -143,7 +143,7 @@ const handleStart = async () => {
   server.value.status = 'Starting...';
 
   try {
-    await api.post(`/mc-api/a/start/${props.id}`);
+    await api.post(`/api/v1/server/start/${props.id}`);
     message.success('正在啟動伺服器...');
     // 記錄活動
     activityLog.logServerStart(props.id, displayName.value);
@@ -171,7 +171,7 @@ const handleStop = async () => {
   server.value.status = 'Stopping...';
 
   try {
-    await api.post(`/mc-api/a/stop/${props.id}`);
+    await api.post(`/api/v1/server/stop/${props.id}`);
     message.success('正在停止伺服器...');
     // 記錄活動
     activityLog.logServerStop(props.id, displayName.value);
@@ -200,7 +200,7 @@ const propertiesSaving = ref(false);
 const fetchProperties = async () => {
   propertiesLoading.value = true;
   try {
-    const res = await api.post(`/mc-api/a/property/${props.id}`);
+    const res = await api.post(`/api/v1/server/property/${props.id}`);
     // Backend returns { message: "...", property: "..." }
     // API interceptor returns response.data directly
     propertiesContent.value = typeof res === 'string' ? res : res.property || '';
@@ -309,7 +309,7 @@ const handleUpdateMod = async (mod) => {
 const saveProperties = async () => {
   propertiesSaving.value = true;
   try {
-    await api.post(`/mc-api/a/property/upload/${props.id}`, {
+    await api.post(`/api/v1/server/property/upload/${props.id}`, {
       texts: propertiesContent.value,
     });
     message.success('設定已儲存');
@@ -348,7 +348,7 @@ const handleCommandSent = () => {
 // 備份流程相關函數 - 被 ServerBackups 元件呼叫
 const handleBackupStop = async () => {
   try {
-    await api.post(`/mc-api/a/stop/${props.id}`);
+    await api.post(`/api/v1/server/stop/${props.id}`);
     smartPolling?.enterActiveMode();
   } catch (err) {
     console.error('Backup stop error:', err);
@@ -357,7 +357,7 @@ const handleBackupStop = async () => {
 
 const handleBackupStart = async () => {
   try {
-    await api.post(`/mc-api/a/start/${props.id}`);
+    await api.post(`/api/v1/server/start/${props.id}`);
     smartPolling?.enterActiveMode();
   } catch (err) {
     console.error('Backup start error:', err);

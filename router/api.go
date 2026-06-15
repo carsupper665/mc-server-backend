@@ -21,56 +21,20 @@ func SetAPIRouter(router *gin.Engine) {
 	svc := service.NewServerService(mgr)
 	c := controller.NewServerController(svc)
 	router.Use(middleware.CORS())
-	// old api delete later
-	mcapi := router.Group("/mc-api")
-	mcapi.Use(gzip.Gzip(gzip.DefaultCompression),
-		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
-		middleware.GloabalIPFilter(),
-		middleware.UserAgentFilter(),
-	)
-	{
-		mcapi.GET("/finfo", controller.GetAllFabricVersions)
-		mcapi.GET("/vinfo", controller.GetAllVanillaVersions)
-	}
-	amcapi := mcapi.Group("/a")
-	amcapi.Use(middleware.ValidateJWTV2())
-	{
-		amcapi.POST("/create", controller.CreateServer)
-		amcapi.POST("/backup/:server_id", c.Backup)
-		amcapi.POST("/status/:server_id", c.GetStatus)
-		amcapi.POST("/stop/:server_id", c.Stop)
-		amcapi.POST("/start/:server_id", c.Start)
-		amcapi.POST("/ls-backup/:server_id", c.ListServerBackup)
-		amcapi.POST("/property/:server_id", c.GetServerProperties)
-		amcapi.POST("/property/upload/:server_id", c.UploadProperty)
-		amcapi.POST("/cmd/:server_id", c.SendCommand)
-		amcapi.GET("/usage/:server_id", c.ServerUsage)
-		amcapi.POST("/recover", c.SaveRollBack)
-	}
-	sapi := router.Group("/server-api")
-	sapi.Use(gzip.Gzip(gzip.DefaultCompression),
-		middleware.UserAgentFilter(),
-		middleware.GloabalIPFilter(),
-	)
-	asapi := sapi.Group("/a")
-	asapi.Use(middleware.ValidateJWTV2())
-	{
-		asapi.GET("/log/:server_id", c.GetServerLog)
-	}
 
-	testApi := router.Group("/test-api")
-	testApi.Use(gzip.Gzip(gzip.DefaultCompression),
-		middleware.DebugMode(),
-	)
-	{
+	//testApi := router.Group("/test-api")
+	//testApi.Use(gzip.Gzip(gzip.DefaultCompression),
+	//	middleware.DebugMode(),
+	//)
+	//{
+	//
+	//}
 
-	}
-
-	client := mcapi.Group("/client")
-	client.Use(middleware.ClientAppAuth())
-	{
-		client.GET("/getUserInfo", controller.GetUserInfo)
-	}
+	//client := mcapi.Group("/client")
+	//client.Use(middleware.ClientAppAuth())
+	//{
+	//	client.GET("/getUserInfo", controller.GetUserInfo)
+	//}
 
 	// New Api Router
 	api := router.Group("/api")

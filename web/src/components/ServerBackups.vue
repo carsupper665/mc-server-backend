@@ -44,7 +44,7 @@ const fetchBackups = async () => {
   loading.value = true;
   try {
     // 傳送空物件以確保 Content-Type header 正確
-    const res = await api.post(`/mc-api/a/ls-backup/${props.serverId}`, {});
+    const res = await api.post(`/api/v1/server/list/backup/${props.serverId}`, {});
     // api interceptor returns response.data directly
     backups.value = res && res.backups ? res.backups.map(b => ({ name: b })) : [];
   } catch (err) {
@@ -68,7 +68,7 @@ const handleBackup = async () => {
 // 執行備份（伺服器必須已停止）
 const executeBackup = async () => {
   try {
-    await api.post(`/mc-api/a/backup/${props.serverId}`, {});
+    await api.post(`/api/v1/server/backup/${props.serverId}`, {});
     message.success('備份完成！');
     activityLog.logBackup(props.serverId, props.serverName);
     fetchBackups();
@@ -151,7 +151,7 @@ const confirmRecover = async () => {
 
   isRecovering.value = true;
   try {
-    await api.post(`/mc-api/a/recover`, {
+    await api.post(`/api/v1/recover`, {
       server_id: props.serverId,
       file_name: recoveringBackup.value.name,
     });

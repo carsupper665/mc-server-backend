@@ -18,6 +18,7 @@ func SetRouter(router *gin.Engine) {
 	SetAuthRouter(router)
 	SetUserRouter(router)
 	SetAmongUsIRouter(router)
+	SetAdminRouter(router)
 
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 

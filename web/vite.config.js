@@ -22,10 +22,6 @@ export default defineConfig({
         target: Api,
         changeOrigin: true,
       },
-      '/mc-api': {
-        target: Api,
-        changeOrigin: true,
-      },
       '/api': {
         target: Api,
         changeOrigin: true,
