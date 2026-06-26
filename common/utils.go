@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -282,4 +283,70 @@ func FetchModrinthProject(modKey string) (*ModrinthProject, []byte, error) {
 	}
 
 	return &project, raw, nil
+}
+
+type CleanupErrorItem struct {
+	SID string
+	Err error
+}
+
+type ErrCleanUpStack struct {
+	Items []CleanupErrorItem
+}
+
+func (e *ErrCleanUpStack) Add(sid string, err error) {
+	if err == nil {
+		return
+	}
+
+	e.Items = append(e.Items, CleanupErrorItem{
+		SID: sid,
+		Err: err,
+	})
+}
+
+func (e *ErrCleanUpStack) HasError() bool {
+	return len(e.Items) > 0
+}
+
+// Error 會在 return error 時自動被呼叫。
+func (e *ErrCleanUpStack) Error() string {
+	if len(e.Items) == 0 {
+		return ""
+	}
+
+	// map 走訪順序不固定；排序後 log / 測試結果比較穩定。
+	items := append([]CleanupErrorItem(nil), e.Items...)
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].SID < items[j].SID
+	})
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "cleanup failed for %d server(s):", len(items))
+
+	for _, item := range items {
+		fmt.Fprintf(&b, "\n  SID=%s: %v", item.SID, item.Err)
+	}
+
+	return b.String()
+}
+
+// 讓 errors.Is / errors.As 可以檢查裡面的原始錯誤。
+// Go 1.20+ 支援 Unwrap() []error。
+func (e *ErrCleanUpStack) Unwrap() []error {
+	errs := make([]error, 0, len(e.Items))
+
+	for _, item := range e.Items {
+		errs = append(errs, item.Err)
+	}
+
+	return errs
+}
+
+// 可選：方便拿到標準 errors.Join 的結果。
+func (e *ErrCleanUpStack) JoinedError() error {
+	if !e.HasError() {
+		return nil
+	}
+	return errors.Join(e.Unwrap()...)
 }

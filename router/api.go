@@ -6,20 +6,15 @@ import (
 	"go-backend/common"
 	"go-backend/controller"
 	"go-backend/middleware"
-	"go-backend/service"
-
 	// "go-backend/middleware"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
-func SetAPIRouter(router *gin.Engine) {
-	pl := common.GetPortList(30000, 30050)
+func SetAPIRouter(router *gin.Engine, serverController *controller.ServerController) {
 
-	mgr := service.NewServerManager(pl)
-	svc := service.NewServerService(mgr)
-	c := controller.NewServerController(svc)
+	c := serverController
 	router.Use(middleware.CORS())
 
 	//testApi := router.Group("/test-api")

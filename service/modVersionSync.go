@@ -24,7 +24,7 @@ func SyncInstalledModVersions() error {
 	failures := make([]string, 0)
 
 	for _, target := range targets {
-		version, err := getLatestOrSpecific(target.ModID, target.ModLoader, target.MCVersion, "")
+		version, err := getLatestOrSpecific(target.ModID, target.ModLoader, target.MCVersion, "", false) // 先預設為false 此功能待測試
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s(%s/%s): %v", target.ModID, target.ModLoader, target.MCVersion, err))
 			continue

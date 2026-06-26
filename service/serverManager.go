@@ -289,6 +289,36 @@ func (sm *ServerManager) ServerSaveList(workDir string) ([]string, error) {
 	return list, nil
 }
 
+func (sm *ServerManager) CleanUpHook() *common.ErrCleanUpStack {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	errStack := &common.ErrCleanUpStack{}
+
+	for sid, srv := range sm.servers {
+		s := srv.Status()
+		if s == "stopped" {
+			delete(sm.servers, sid)
+			common.SysLog(fmt.Sprintf("Cleaned up server: %s", sid))
+			continue
+		}
+
+		if err := srv.Stop(); err != nil {
+			errStack.Add(sid, err)
+			common.SysError(fmt.Sprintf("Failed to clean up server %s: %v", sid, err))
+			continue
+		}
+		delete(sm.servers, sid)
+		common.SysLog(fmt.Sprintf("Cleaned up server: %s", sid))
+	}
+
+	if errStack.HasError() {
+		return errStack
+	}
+
+	return nil
+}
+
 func (sm *ServerManager) ServerSaveRollBack(sid, fileName, workDir string) error {
 	sm.mu.RLock()
 	srv, exists := sm.servers[sid]
@@ -670,7 +700,7 @@ func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, g
 		return nil
 	}
 
-	newModInfo, err := getLatestOrSpecific(modId, modLoader, gameVersion, verId)
+	newModInfo, err := getLatestOrSpecific(modId, modLoader, gameVersion, verId, false) // 先預設為false 此功能待測試
 	if err != nil {
 		return err
 	}

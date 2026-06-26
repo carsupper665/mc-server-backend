@@ -122,7 +122,12 @@ func main() {
 	server.Use(sessions.Sessions("session", store))
 
 	// set router
-	router.SetRouter(server)
+	// init manager session
+	pl := common.GetPortList(30000, 30050)
+	mgr := service.NewServerManager(pl)
+	svc := service.NewServerService(mgr)
+	c := controller.NewServerController(svc)
+	router.SetRouter(server, c)
 
 	// unified manual shutdown trigger for non-signal paths.
 	manualCtx, manualCancel := context.WithCancel(context.Background())
@@ -130,6 +135,14 @@ func main() {
 	var shutdownOnce sync.Once
 	triggerShutdown := func(reason string) {
 		shutdownOnce.Do(func() {
+			var errCleanup *common.ErrCleanUpStack
+			errCleanup = mgr.CleanUpHook()
+			if errCleanup != nil {
+				errs := errCleanup.Unwrap()
+				for i := range errs {
+					logger.Errorf("Cleanup error: %s", errs[i].Error())
+				}
+			}
 			logger.Infof("Shutdown requested: %s", reason)
 			manualCancel()
 		})
