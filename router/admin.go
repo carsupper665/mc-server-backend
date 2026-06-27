@@ -13,7 +13,7 @@ func SetAdminRouter(router *gin.Engine) {
 
 	v1.Use(
 		middleware.CORS(),
-		middleware.GloabalIPFilter(),
+		middleware.GlobalIPFilter(),
 		middleware.UserAgentFilter(),
 		middleware.IpRateLimiter(100, 60),
 		middleware.ValidateJWTV2(),

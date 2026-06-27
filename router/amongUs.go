@@ -26,7 +26,7 @@ func SetAmongUsIRouter(router *gin.Engine) {
 	pr := auRouter.Group("/public")
 
 	pr.Use(
-		middleware.GloabalIPFilter(),
+		middleware.GlobalIPFilter(),
 	)
 	{
 		pr.GET("/Join/:id", c.Join)

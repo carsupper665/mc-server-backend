@@ -9,6 +9,7 @@ import (
 	"go-backend/controller"
 	"go-backend/middleware"
 	"go-backend/model"
+	"go-backend/plugin"
 	"go-backend/router"
 	"go-backend/service"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	_ "go-backend/plugins"
 )
 
 var logger *common.SysLogger
@@ -167,6 +169,13 @@ func main() {
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
 	}
+
+	// finally init PluginInitialize
+	err = plugin.PluginInitialize(server)
+	if err != nil {
+		logger.Fatal("failed to initialize plugin: " + err.Error())
+	}
+
 	logger.Infof("HTTP server listening on :%s, Ctrl+C To close.", port)
 
 	httpServer := &http.Server{

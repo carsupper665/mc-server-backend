@@ -17,7 +17,7 @@ func SetUserRouter(router *gin.Engine) {
 	user := router.Group("/user")
 	user.Use(
 		gzip.Gzip(gzip.DefaultCompression),
-		middleware.GloabalIPFilter(),
+		middleware.GlobalIPFilter(),
 		middleware.UserAgentFilter(),
 		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
 		middleware.ValidateJWTV2(),

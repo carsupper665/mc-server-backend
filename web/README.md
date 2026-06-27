@@ -61,7 +61,7 @@ src/
 ├── composables/  # Vue Composition API hooks
 ├── config/       # 配置常數
 ├── layout/       # 佈局元件
-├── router/       # Vue Router 設定
+├── router/       # Vue SetRouter 設定
 ├── store/        # Pinia 狀態管理
 ├── utils/        # 工具函式
 └── views/        # 頁面視圖
@@ -74,7 +74,7 @@ src/
 | Vue 3 | UI 框架 |
 | Vite | 建置工具 |
 | Pinia | 狀態管理 |
-| Vue Router | 路由 |
+| Vue SetRouter | 路由 |
 | Naive UI | 元件庫 |
 | xterm.js | 終端機模擬 |
 | Chart.js | 圖表 |

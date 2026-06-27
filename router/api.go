@@ -31,11 +31,11 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 	//	client.GET("/getUserInfo", controller.GetUserInfo)
 	//}
 
-	// New Api Router
+	// New Api SetRouter
 	api := router.Group("/api")
 	api.Use(gzip.Gzip(gzip.DefaultCompression),
 		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
-		middleware.GloabalIPFilter(),
+		middleware.GlobalIPFilter(),
 		middleware.UserAgentFilter(),
 	)
 	v1 := api.Group("/v1")

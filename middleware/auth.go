@@ -19,7 +19,7 @@ const (
 	FailWindow = 5 * time.Minute
 )
 
-func GloabalIPFilter() gin.HandlerFunc {
+func GlobalIPFilter() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		isBanned, err := model.IsIPBanned(ip)

@@ -23,7 +23,7 @@ func SetAuthRouter(router *gin.Engine) {
 		gzip.Gzip(gzip.DefaultCompression),
 		middleware.IpRateLimiter(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration),
 		middleware.UserAgentFilter(),
-		middleware.GloabalIPFilter(),
+		middleware.GlobalIPFilter(),
 	)
 	{
 		//auth.POST("/login", controller.Login)
