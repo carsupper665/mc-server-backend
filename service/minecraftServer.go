@@ -2,9 +2,11 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"go-backend/common"
 	"go-backend/model"
 	"net/http"
@@ -154,56 +156,44 @@ func (s *ServerService) UpdateMod(sid, modID, workDir, modPath, modLoader, gameV
 }
 
 func CreateServer(oid, serverType, serverVer, loader, installer string) (string, error) {
-	var (
-		serverBasePath  = common.MinecraftServerPath
-		fabricInstaller = common.LatestFabricInstallerVersion
-		fabricLoader    = common.LatestFabricLoaderVersion
-	)
-
-	var idPerFix, url string
-	if loader == "" {
-		loader = fabricLoader
-	}
-
-	if installer == "" {
-		installer = fabricInstaller
-	}
-	serverType = strings.ToLower(serverType)
-	idPerFix, url, err := serverUri(serverType, serverVer, loader)
+	serverID, workDir, err := prepareServerDirectory(serverType, oid, serverVer)
 	if err != nil {
 		return "", err
 	}
-
-	uid := common.GetRandomIntString(4)
-	serverID := fmt.Sprintf("%s%s-%s-OID-%s", idPerFix, serverVer, uid, oid)
-
-	sysPath := filepath.Join(serverBasePath, serverID)
-	// defer clean file if error
-	defer func() {
-		if err != nil {
-			if clearErr := ErrorFileClear(sysPath); clearErr != nil {
-				msg := fmt.Sprintf("warning: %v", clearErr)
-				common.SysLog(msg)
-			}
-		}
-	}()
-
-	if err = os.MkdirAll(sysPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create server directory %s: %w", sysPath, err)
+	if err = installServer(context.Background(), workDir, serverType, serverVer, loader, installer); err != nil {
+		_ = ErrorFileClear(workDir)
+		return "", err
 	}
-
-	path := filepath.Join(sysPath, "server.jar")
-	if err = common.DownloadFile(path, url); err != nil {
-		return "", fmt.Errorf("failed to download fabric installer: %w", err)
-	}
-
-	eulaPath := filepath.Join(sysPath, "eula.txt")
-	eulaContent := []byte("eula=true\n")
-	if err = os.WriteFile(eulaPath, eulaContent, 0644); err != nil {
-		return "", fmt.Errorf("failed to write eula.txt: %w", err)
-	}
-
 	return serverID, nil
+}
+
+func prepareServerDirectory(serverType, oid, serverVer string) (string, string, error) {
+	prefix := "mcsvv-"
+	if strings.ToLower(serverType) == Fabric {
+		prefix = "mcsfv-"
+	}
+	prefix = prefix + oid + "-" + serverVer + "-"
+	serverID := prefix + common.GetRandomString(20)
+	workDir := filepath.Join(common.MinecraftServerPath, serverID)
+	err := os.MkdirAll(workDir, 0755)
+	return serverID, workDir, err
+}
+
+func installServer(ctx context.Context, workDir, serverType, serverVer, loader, installer string) error {
+	if loader == "" {
+		loader = common.LatestFabricLoaderVersion
+	}
+	_, uri, err := serverUri(serverType, serverVer, loader)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(serverType, Fabric) && installer != "" {
+		uri = fmt.Sprintf("https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar", serverVer, loader, installer)
+	}
+	if err := common.DownloadFileContext(ctx, http.DefaultClient, filepath.Join(workDir, "server.jar"), uri, nil, -1); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(workDir, "eula.txt"), []byte("eula=true\n"), 0644)
 }
 
 func serverUri(ServerType, serverVer, fabricLoader string) (string, string, error) {

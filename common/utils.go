@@ -4,6 +4,7 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,26 +41,7 @@ func GetTimeString() string {
 }
 
 func DownloadFile(dest, url string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("http get %s error: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("bad status downloading %s: %s", url, resp.Status)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("create file %s error: %w", dest, err)
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return fmt.Errorf("writing to %s error: %w", dest, err)
-	}
-	return nil
+	return DownloadFileContext(context.Background(), http.DefaultClient, dest, url, nil, -1)
 }
 
 func SendErrorToDc(msg string) error {

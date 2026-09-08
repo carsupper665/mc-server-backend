@@ -30,6 +30,10 @@ const stageLabel = (stage, status) => {
   if (status === 'failed') return '失敗';
   if (status === 'completed') return '完成';
   switch (stage) {
+    case 'creating': return '建立伺服器';
+    case 'overriding': return '套用設定';
+    case 'retrying': return '重試下載';
+    case 'metadata': return '紀錄模組';
     case 'queued':
       console.log("queued")
       return '排隊中';
@@ -78,7 +82,7 @@ const stageClass = (stage, status) => {
     <div v-else class="install-panel">
       <div class="panel-header">
         <div class="title">
-          <n-text strong>MOD INSTALLS</n-text>
+          <n-text strong>安裝進度</n-text>
           <n-tag size="small" type="success" round>{{ activeCount }}</n-tag>
         </div>
         <n-button size="tiny" quaternary @click="toggle">
@@ -90,7 +94,7 @@ const stageClass = (stage, status) => {
         <div v-for="job in jobs" :key="job.jobId" class="job-card">
           <div class="job-header">
             <div class="job-summary">
-              <img :src="job.modIcon" class="job-icon" alt="mod icon" />
+              <img v-if="job.modIcon" :src="job.modIcon" class="job-icon" alt="mod icon" />
               <div>
                 <div class="job-title">{{ job.modTitle }}</div>
                 <div class="job-sub">{{ job.serverName }} · {{ stageLabel(job.stage, job.status) }}</div>
@@ -126,7 +130,7 @@ const stageClass = (stage, status) => {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-NameIndex: 1000;
+  z-index: 1000;
   font-family: 'Fira Code', monospace;
 }
 

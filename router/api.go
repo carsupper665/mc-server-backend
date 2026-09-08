@@ -49,6 +49,8 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 	serverApi.Use(middleware.ValidateJWTV2())
 	{
 		serverApi.POST("/create", controller.CreateServer)
+		serverApi.GET("/modpack/config", controller.ModpackConfig)
+		serverApi.POST("/modpack/import", controller.ImportModpack)
 		serverApi.DELETE("/del/:server_id", c.DeleteServerById)
 
 		serverApi.GET("/status/:server_id", c.GetStatus)

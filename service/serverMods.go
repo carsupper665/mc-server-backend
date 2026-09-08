@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -444,56 +445,10 @@ func marshalJSON(value any) (string, error) {
 }
 
 func modDownload(file ModrinthFile, workDir string) (string, error) {
-
 	if file.URL == "" || file.Filename == "" {
 		return "", ErrModMetadataMissing
 	}
-
-	modsDir := filepath.Join(workDir, "mods")
-	if err := os.MkdirAll(modsDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create mods directory: %w", err)
-	}
-
-	// download
-	dlUrl := file.URL
-	var (
-		resp *http.Response
-		err  error
-	)
-	if resp, err = http.Get(dlUrl); err != nil {
-		common.SysError(fmt.Sprintf("Error while mod download: %s", err.Error()))
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		common.SysError(fmt.Sprintf("Error while mod download with status: %d", resp.StatusCode))
-		return "", NetWorkErr
-	}
-
-	tmpFile, err := os.CreateTemp(modsDir, file.Filename+".tmp-*")
-	if err != nil {
-		common.SysError(fmt.Sprintf("Error while creating temp mod file: %s", err.Error()))
-		return "", err
-	}
-	tmpName := tmpFile.Name()
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpName)
-		return "", err
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return "", err
-	}
-
-	finalPath := filepath.Join(modsDir, file.Filename)
-	if err := os.Rename(tmpName, finalPath); err != nil {
-		_ = os.Remove(tmpName)
-		return "", err
-	}
-
-	return finalPath, nil
+	dest := filepath.Join(workDir, "mods", file.Filename)
+	err := common.DownloadFileContext(context.Background(), http.DefaultClient, dest, file.URL, file.Hashes, -1)
+	return dest, err
 }

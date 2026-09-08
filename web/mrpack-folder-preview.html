@@ -1,0 +1,4 @@
+<!doctype html><html><meta charset="UTF-8"><title>mrpack folder preview</title><body style="background:#101014"><div id="app"></div><script type="module">
+import {createApp,h} from 'vue';import {createPinia} from 'pinia';import {NConfigProvider,NMessageProvider,darkTheme} from 'naive-ui';import ModpackImport from './src/components/ModpackImport.vue';
+createApp({render:()=>h(NConfigProvider,{theme:darkTheme},()=>h(NMessageProvider,null,()=>h(ModpackImport)))}).use(createPinia()).mount('#app');
+</script></body></html>

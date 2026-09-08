@@ -83,7 +83,7 @@ export const useModInstallStore = defineStore('modInstall', {
           }
           const reader = response.body.getReader();
           const read = () => reader.read().then(({ done, value }) => {
-            if (done) return;
+            if (done) { onError(new Error('SSE closed')); return; }
             buffer += decoder.decode(value, { stream: true });
             processBuffer();
             return read();
@@ -111,7 +111,7 @@ export const useModInstallStore = defineStore('modInstall', {
             const data = JSON.parse(event.data || '{}');
             const status = data.stage === 'completed'
               ? 'completed'
-              : (data.stage === 'failed' || data.error ? 'failed' : 'running');
+              : (['failed', 'interrupted'].includes(data.stage) ? 'failed' : 'running');
 
             const patch = {
               stage: data.stage,
@@ -121,6 +121,7 @@ export const useModInstallStore = defineStore('modInstall', {
               status
             };
 
+            if (data.server_id) patch.serverId = data.server_id;
             if (data.mod_name) {
               patch.modTitle = data.mod_name;
             }
@@ -135,9 +136,18 @@ export const useModInstallStore = defineStore('modInstall', {
             store.closeJobStream(jobId);
           }
         },
-        () => {
-          store.updateJob(jobId, { status: 'failed', error: 'SSE 連線中斷' });
+        async () => {
+          const current = store.jobs.find(job => job.jobId === jobId);
+          if (current?.status === 'completed' || current?.status === 'failed') return;
           store.closeJobStream(jobId);
+          try {
+            const snapshot = await api.get(`/api/v1/server/mod/job/${jobId}`);
+            const terminal = ['completed', 'failed', 'interrupted'].includes(snapshot.status);
+            store.updateJob(jobId, { status: snapshot.status === 'interrupted' ? 'failed' : snapshot.status, percent: snapshot.progress, message: snapshot.message, error: snapshot.error || '' });
+            if (!terminal) setTimeout(() => store.subscribeJob(jobId), 2000);
+          } catch {
+            store.updateJob(jobId, { status: 'failed', error: '無法取得安裝進度' });
+          }
         }
       );
 

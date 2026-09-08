@@ -15,15 +15,35 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-backend/common"
+	"go-backend/controller"
 	"go-backend/model"
 	"go-backend/router"
+	"go-backend/service"
 )
 
 func setupTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
-	common.GlobalApiRateLimitNum = 10
+	common.GlobalApiRateLimitNum = 1000
+	common.InitTokenRegister()
+	oldDB, oldRoot, oldLogDir, oldLogger := model.DB, common.MinecraftServerPath, *common.LogDir, common.Logger
+	common.MinecraftServerPath = t.TempDir()
+	*common.LogDir = t.TempDir()
+	if err := common.IntiLogger("test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.InitLogger(); err != nil {
+		t.Fatal(err)
+	}
+	testLogger := common.Logger
+	t.Cleanup(func() {
+		_ = testLogger.Close()
+		model.DB = oldDB
+		common.MinecraftServerPath = oldRoot
+		*common.LogDir = oldLogDir
+		common.Logger = oldLogger
+	})
 	common.GlobalApiRateLimitDuration = 60
 
 	common.SQLitePath = fmt.Sprintf("file:mc_test_%d?mode=memory&cache=shared", time.Now().UnixNano())
@@ -32,6 +52,7 @@ func setupTestRouter(t *testing.T) *gin.Engine {
 		t.Fatalf("init sqlite: %v", err)
 	}
 	model.DB = db
+	t.Cleanup(func() { sqlDB, _ := db.DB(); sqlDB.Close() })
 	if err := model.DB.AutoMigrate(
 		&model.BlockedIP{},
 		&model.LoginAttempt{},
@@ -44,7 +65,7 @@ func setupTestRouter(t *testing.T) *gin.Engine {
 	}
 
 	r := gin.New()
-	router.SetAPIRouter(r)
+	router.SetAPIRouter(r, controller.NewServerController(service.NewServerService(service.NewServerManager(nil))))
 	return r
 }
 
@@ -56,6 +77,8 @@ func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 type mockModrinthVersion struct {
 	ID            string             `json:"id"`
+	ProjectID     string             `json:"project_id"`
+	VersionType   string             `json:"version_type"`
 	VersionNumber string             `json:"version_number"`
 	Files         []mockModrinthFile `json:"files"`
 	GameVersions  []string           `json:"game_versions"`
@@ -75,6 +98,8 @@ func setupMockModrinth(t *testing.T, versionID, versionNumber, filename, loader,
 	payload := []mockModrinthVersion{
 		{
 			ID:            versionID,
+			ProjectID:     "sodium",
+			VersionType:   "release",
 			VersionNumber: versionNumber,
 			Files: []mockModrinthFile{
 				{
@@ -95,11 +120,21 @@ func setupMockModrinth(t *testing.T, versionID, versionNumber, filename, loader,
 	origTransport := http.DefaultTransport
 	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Host {
+		case "127.0.0.1":
+			return origTransport.RoundTrip(req)
+		case "meta.fabricmc.net":
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("server-jar")), Header: make(http.Header), Request: req}, nil
 		case "api.modrinth.com":
+			body := data
+			if strings.HasPrefix(req.URL.Path, "/v2/version/") {
+				body, _ = json.Marshal(payload[0])
+			} else if !strings.HasSuffix(req.URL.Path, "/version") {
+				body = []byte(`{"id":"sodium","slug":"sodium","title":"Sodium"}`)
+			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(bytes.NewReader(data)),
+				Body:       io.NopCloser(bytes.NewReader(body)),
 				Request:    req,
 			}, nil
 		case "mocked.download":
@@ -140,7 +175,7 @@ func TestAddModRouteRequiresAuth(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/server/mod/add/server1", bytes.NewBufferString(`{}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120.0")
 	req.RemoteAddr = "127.0.0.1:12345"
 
 	w := httptest.NewRecorder()
@@ -165,9 +200,10 @@ func TestAddModRouteInvalidBody(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/server/mod/add/server1", bytes.NewBufferString(`{}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120.0")
 	req.RemoteAddr = "127.0.0.1:12345"
-	req.AddCookie(&http.Cookie{Name: common.JwtCookieName, Value: token})
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set(common.DeviceHeader, "test-device")
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -200,9 +236,10 @@ func TestAddModRouteSuccess(t *testing.T) {
 	body := `{"mod_id":"sodium","version_id":"ver-123","auto_update":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/server/mod/add/server1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120.0")
 	req.RemoteAddr = "127.0.0.1:12345"
-	req.AddCookie(&http.Cookie{Name: common.JwtCookieName, Value: token})
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set(common.DeviceHeader, "test-device")
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -254,9 +291,10 @@ func TestAddModSameModDifferentServers(t *testing.T) {
 	for _, serverID := range []string{"server1", "server2"} {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/server/mod/add/"+serverID, bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120.0")
 		req.RemoteAddr = "127.0.0.1:12345"
-		req.AddCookie(&http.Cookie{Name: common.JwtCookieName, Value: token})
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set(common.DeviceHeader, "test-device")
 
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)

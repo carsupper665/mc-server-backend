@@ -137,6 +137,9 @@ func main() {
 	var shutdownOnce sync.Once
 	triggerShutdown := func(reason string) {
 		shutdownOnce.Do(func() {
+			if err := service.ShutdownModpackSessions(); err != nil {
+				logger.Errorf("Save modpack sessions: %v", err)
+			}
 			var errCleanup *common.ErrCleanUpStack
 			errCleanup = mgr.CleanUpHook()
 			if errCleanup != nil {
@@ -204,8 +207,9 @@ func main() {
 		// triggered by non-signal shutdown sources.
 	case err := <-serverErrCh:
 		if err != nil {
-			logger.Fatal("failed to start HTTP server: " + err.Error())
+			logger.Errorf("failed to start HTTP server: %s", err.Error())
 		}
+		triggerShutdown("HTTP server stopped")
 	}
 
 	common.EL.StopEventLoop()
@@ -219,6 +223,9 @@ func main() {
 }
 
 func eventRegister(triggerShutdown func(reason string)) error {
+	if err := common.EL.RegisterEvent("Modpack-Session-Cleanup", service.PruneModpackSessions, time.Minute, -1); err != nil {
+		return err
+	}
 	upf := service.BuildUpdateChecker(func() {
 		err := restartApplication()
 		if err != nil {

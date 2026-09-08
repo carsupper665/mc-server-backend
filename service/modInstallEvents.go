@@ -87,11 +87,13 @@ func SubscribeInstallEvents(jobID string) (<-chan InstallEvent, []InstallEvent, 
 	if jobID == "" {
 		return nil, nil, nil, errors.New("job id is required")
 	}
-	if !modInstallQueue.hasJob(jobID) {
+	modInstallEvents.mu.Lock()
+	stream := modInstallEvents.streams[jobID]
+	modInstallEvents.mu.Unlock()
+	if stream == nil {
 		return nil, nil, nil, errors.New("job not found")
 	}
 
-	stream := ensureJobStream(jobID)
 	ch := make(chan InstallEvent, 16)
 
 	stream.mu.Lock()

@@ -35,11 +35,11 @@ type RegisterUserRequest struct {
 
 type EditUserReq struct {
 	UserId         uint   `json:"user_id" binding:"required"`
-	NewPassword    string `json:"new_password" binding:"optional"`
-	NewEmail       string `json:"new_email" binding:"optional"`
-	NewUsername    string `json:"new_username" binding:"optional"`
-	NewDisplayName string `json:"new_display_name" binding:"optional"`
-	NewRole        int    `json:"new_role" binding:"optional"`
+	NewPassword    string `json:"new_password"`
+	NewEmail       string `json:"new_email"`
+	NewUsername    string `json:"new_username"`
+	NewDisplayName string `json:"new_display_name"`
+	NewRole        int    `json:"new_role"`
 }
 
 type ResetAccReq struct {

@@ -19,7 +19,10 @@ type UserMinecraftServer struct {
 	ModLoader     string `gorm:"size:20" json:"mod_loader"`     // "Vanilla"/"fabric"
 	LoaderVersion string `gorm:"size:50" json:"loader_version"` // "47.2.0"
 
-	SystemPath string `gorm:"size:255;not null" json:"system_path"`
+	InstallSessionID string `gorm:"index;size:50" json:"ins_ses_id,omitempty"`
+	InstallStatus    string `gorm:"size:20" json:"install_status,omitempty"`
+	InstallDetails   string `gorm:"type:text" json:"-"`
+	SystemPath       string `gorm:"size:255;not null" json:"system_path"`
 	// 關聯
 	InstalledMods []ServerMod `gorm:"foreignKey:ServerID;references:ServerID"`
 

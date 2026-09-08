@@ -9,10 +9,14 @@ import api from '../api';
 import { useRouter } from 'vue-router';
 import { useVersionCacheStore } from '../store/versionCache';
 import MinecraftLoader from '../components/MinecraftLoader.vue';
+import ModpackImport from '../components/ModpackImport.vue';
+import { useModInstallStore } from '../store/modInstall';
 
 const message = useMessage();
 const router = useRouter();
 const versionCache = useVersionCacheStore();
+const installs = useModInstallStore();
+watch(() => installs.jobs.filter(job => job.status === 'completed').length, () => fetchServers());
 
 const servers = ref([]);
 const loading = ref(false);
@@ -57,12 +61,13 @@ const fetchServers = async () => {
     // This is the N+1 solution because list API lacks details
     const enrichedList = await Promise.all(list.map(async (srv) => {
         // 1. Parse Type from ID
-        let type = 'Unknown';
+        let type = srv.mod_loader || 'Unknown';
         if (srv.server_id.startsWith('mcsfv')) type = 'Fabric';
         else if (srv.server_id.startsWith('mcsvv')) type = 'Vanilla';
         
         // 2. Fetch Status
         let status = 'Unknown';
+        if (srv.install_status && srv.install_status !== 'completed') { return { ...srv, type, status: srv.install_status }; }
         try {
             // Use POST as per backend controller definition
             const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`);
@@ -234,6 +239,7 @@ onMounted(() => {
               <template #icon><n-icon><ReloadOutlined /></n-icon></template>
               REFRESH
             </n-button>
+            <ModpackImport @submitted="fetchServers" />
             <n-button type="primary" @click="showCreateModal = true">
               <template #icon><n-icon><PlusOutlined /></n-icon></template>
               DEPLOY NEW SERVER

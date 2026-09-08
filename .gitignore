@@ -39,3 +39,7 @@ AGENTS.md
 ./test/cookies.json
 cookies.json
 todolist/
+output/
+.omx/
+.playwright-cli/
+test/mrcpack/*

@@ -354,6 +354,10 @@ func (sc *ServerController) Start(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Server start Failed."})
 		return
 	}
+	if serverInfo.InstallStatus != "" && serverInfo.InstallStatus != "completed" {
+		c.JSON(409, gin.H{"error": "modpack installation is not complete"})
+		return
+	}
 	// 兼容舊DB 沒有設定 XMX XMS
 	xmxBytes := serverInfo.Xmx
 	xmsBytes := serverInfo.Xms
@@ -592,6 +596,10 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 		return
 	}
 
+	if serverData.InstallStatus == "queued" || serverData.InstallStatus == "running" {
+		c.JSON(409, gin.H{"error": "modpack installation is in progress"})
+		return
+	}
 	err = sc.svc.DelServer(serverID, serverData.SystemPath)
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "DelServer error: "+err.Error())
@@ -614,7 +622,7 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 type AddModRequest struct {
 	ModID      string `json:"mod_id" binding:"required"`
 	VersionID  string `json:"version_id"`
-	UseBeta    bool   `json:"use_beta" binding:"optional"`
+	UseBeta    bool   `json:"use_beta"`
 	AutoUpdate bool   `json:"auto_update"` // 是否自動更新
 }
 
@@ -696,13 +704,18 @@ func (sc *ServerController) GetModInstallJob(c *gin.Context) {
 		return
 	}
 
-	job, ok := service.GetInstallJobSnapshot(jobID)
-	if !ok {
-		c.JSON(404, gin.H{"error": "job not found"})
+	if strings.HasPrefix(jobID, "mrpack-") {
+		raw, err := service.GetModpackSession(jobID, userId)
+		if err != nil {
+			c.JSON(404, gin.H{"error": "job not found"})
+			return
+		}
+		c.Data(200, "application/json", raw)
 		return
 	}
-	if err := model.IsOwner(userId, job.ServerID); err != nil {
-		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+	job, err := ownedInstallJob(jobID, userId)
+	if err != nil {
+		c.JSON(404, gin.H{"error": "job not found"})
 		return
 	}
 
@@ -721,13 +734,8 @@ func (sc *ServerController) SubscribeModInstall(c *gin.Context) {
 		return
 	}
 
-	job, ok := service.GetInstallJobSnapshot(jobID)
-	if !ok {
+	if _, err := ownedInstallJob(jobID, userId); err != nil {
 		c.JSON(404, gin.H{"error": "job not found"})
-		return
-	}
-	if err := model.IsOwner(userId, job.ServerID); err != nil {
-		c.JSON(403, gin.H{"error": "Not the owner of the server"})
 		return
 	}
 

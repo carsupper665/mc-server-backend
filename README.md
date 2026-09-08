@@ -162,3 +162,7 @@ Among Us mini-game:
 ## Project Notes
 
 - Logs default to `./logs` and can be changed with `-log-dir`.
+
+## Modpack import
+
+Server-side `.mrpack` import with local preview, file selection, install sessions and progress: [usage and API](docs/mrpack-import.md).

@@ -38,10 +38,14 @@ describe('useRateLimitGuard', () => {
         expect(guard.isPaused.value).toBe(false);
     });
 
-    it('should reset backoff level when resetBackoff is called', () => {
+    it('preserves backoff during the pause and resets after it ends', async () => {
         guard.triggerBackoff();
         expect(guard.backoffLevel.value).toBeGreaterThan(0);
 
+        guard.resetBackoff();
+        expect(guard.backoffLevel.value).toBe(1);
+        expect(guard.isPaused.value).toBe(true);
+        await vi.advanceTimersByTimeAsync(2000);
         guard.resetBackoff();
         expect(guard.backoffLevel.value).toBe(0);
     });

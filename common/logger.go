@@ -254,6 +254,14 @@ type SysLogger struct {
 	counter    int
 }
 
+// Close releases the log file after its users have stopped writing.
+func (s *SysLogger) Close() error {
+	if file, ok := s.file.(io.Closer); ok {
+		return file.Close()
+	}
+	return nil
+}
+
 func (s *SysLogger) Write(p []byte) (n int, err error) {
 	return s.writeTo(s.console, p)
 }

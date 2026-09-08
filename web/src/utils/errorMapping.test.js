@@ -81,7 +81,7 @@ describe('errorMapping', () => {
             const error = {
                 message: 'Network Error'
             };
-            expect(extractAndSanitizeError(error)).toBe('Network Error');
+            expect(extractAndSanitizeError(error)).toBe('網路連線錯誤');
         });
 
         it('should handle string errors', () => {
