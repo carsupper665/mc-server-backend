@@ -124,7 +124,7 @@ const getActionIcon = (status) => {
     <n-space vertical :size="24">
       <div class="welcome-section fade-in-up">
         <n-text depth="3" class="system-time">SYSTEM STATUS: [ NOMINAL ]</n-text>
-        <h1 class="welcome-text">WELCOME BACK, OPERATOR <span class="highlight">{{ authStore.user?.username }}</span></h1>
+        <h1 class="welcome-text">WELCOME BACK, OPERATOR <span class="highlight">{{ authStore.displayName }}</span></h1>
       </div>
 
       <n-grid cols="1 s:2 m:4" responsive="screen" :x-gap="24" :y-gap="24">

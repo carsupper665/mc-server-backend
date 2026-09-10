@@ -10,6 +10,7 @@ const routes = [
     },
     {
         path: '/login/callback',
+        alias: '/login/fgf/callback',
         name: 'LoginCallback',
         component: () => import('../views/LoginCallbackView.vue'),
         meta: { guest: true }

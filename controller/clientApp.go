@@ -135,11 +135,12 @@ func SetUpAppJWT(c *gin.Context, user model.User) {
 	}
 
 	payload := map[string]interface{}{
-		"user_id":  fmt.Sprint(user.ID),
-		"username": user.Username,
-		"role":     user.Role,
-		"tid":      tid,
-		"exp":      exp,
+		"user_id":      fmt.Sprint(user.ID),
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"role":         user.Role,
+		"tid":          tid,
+		"exp":          exp,
 	}
 
 	t, err := common.GenerateJWTToken(payload)

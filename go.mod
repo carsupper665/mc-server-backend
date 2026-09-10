@@ -80,3 +80,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/datatypes v1.2.6
 )
+
+require github.com/carsupper665/Frog-Grid-Forge/fgf-oidc v0.0.0
+
+replace github.com/carsupper665/Frog-Grid-Forge/fgf-oidc => ../fgf-oidc

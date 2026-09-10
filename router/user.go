@@ -25,6 +25,7 @@ func SetUserRouter(router *gin.Engine) {
 	{
 		user.POST("/cs", controller.CreateServer)
 		user.GET("/myservers", controller.MyServers)
+		user.GET("/me", controller.CurrentUser)
 	}
 
 }

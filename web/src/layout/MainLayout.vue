@@ -183,9 +183,9 @@ const goToSystem = () => {
             <n-dropdown :options="userOptions" @select="handleUserSelect">
               <div class="user-profile">
                 <n-avatar round size="small" :style="{ backgroundColor: '#18a058' }">
-                  {{ authStore.user?.username?.charAt(0).toUpperCase() }}
+                  {{ authStore.displayName.charAt(0).toUpperCase() }}
                 </n-avatar>
-                <n-text class="username">{{ authStore.user?.username }}</n-text>
+                <n-text class="username">{{ authStore.displayName }}</n-text>
               </div>
             </n-dropdown>
           </n-space>

@@ -385,11 +385,12 @@ func (s *EmailChallengeStore) challenge(id, code, ip string) (string, int8, erro
 	}
 
 	payload := map[string]interface{}{
-		"user_id":  fmt.Sprint(user.ID),
-		"username": user.Username,
-		"role":     user.Role,
-		"Login_IP": ip,
-		"exp":      exp,
+		"user_id":      fmt.Sprint(user.ID),
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"role":         user.Role,
+		"Login_IP":     ip,
+		"exp":          exp,
 	}
 
 	token, err := common.GenerateJWTToken(payload)

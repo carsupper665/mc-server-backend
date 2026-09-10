@@ -103,11 +103,12 @@ func OIDCLogin(c *gin.Context) {
 func issueJWTForUser(user model.User, ip string) (string, error) {
 	exp := time.Now().Add(common.JwtExpireSeconds * time.Second).Unix()
 	payload := map[string]interface{}{
-		"user_id":  fmt.Sprint(user.ID),
-		"username": user.Username,
-		"role":     user.Role,
-		"Login_IP": ip,
-		"exp":      exp,
+		"user_id":      fmt.Sprint(user.ID),
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"role":         user.Role,
+		"Login_IP":     ip,
+		"exp":          exp,
 	}
 	return common.GenerateJWTToken(payload)
 }

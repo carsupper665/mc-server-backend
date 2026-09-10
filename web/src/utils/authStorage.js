@@ -134,6 +134,7 @@ export const buildUserFromToken = (token = getAccessToken()) => {
   return {
     userId: String(payload.user_id || ''),
     username: String(payload.username || fallbackUsername),
+    display_name: String(payload.display_name || '').trim(),
     role: Number.isFinite(role) ? role : DEFAULT_ROLE,
   };
 };

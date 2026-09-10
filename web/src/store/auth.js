@@ -50,6 +50,7 @@ export const useAuthStore = defineStore('auth', {
     }),
     getters: {
         isLoggedIn: (state) => !!state.user,
+        displayName: (state) => state.user?.display_name?.trim() || state.user?.username || '',
         isAdmin: (state) => state.user?.role === 6, // RoleRootUser
     },
     actions: {
@@ -118,6 +119,16 @@ export const useAuthStore = defineStore('auth', {
         async exchangeCallbackToken(query) {
             this.loading = true;
             try {
+                if (query.state || query.error) {
+                    if (query.error) throw new Error('FGF 登入未完成，請重新登入');
+                    const res = await api.withMeta.post('/Authentication/fgf/callback', {
+                        code: String(query.code || ''), state: String(query.state || '')
+                    }, { skipAuthToken: true, skipAuthRedirect: true });
+                    if (!res.data?.token) throw new Error('FGF 登入失敗');
+                    setAccessToken(res.data.token);
+                    await this.fetchUser();
+                    return res;
+                }
                 const { code, id } = parseCallbackPayload(query);
                 if (!code || !id) {
                     throw new Error('登入連結無效或已損壞');
@@ -169,18 +180,20 @@ export const useAuthStore = defineStore('auth', {
             }
 
             try {
-                if (!options.skipRemoteCheck) {
-                    await api.get('/user/myservers', {
-                        silent: true,
-                        skipAuthRedirect: options.skipAuthRedirect === true
-                    });
-                }
-
                 const user = buildUserFromToken(token);
                 if (!user) {
                     throw new Error('Invalid access token payload');
                 }
 
+                if (!options.skipRemoteCheck || !user.display_name) {
+                    const profile = await api.get('/user/me', {
+                        silent: true,
+                        skipAuthRedirect: options.skipAuthRedirect === true
+                    });
+                    user.username = profile.username;
+                    user.display_name = String(profile.display_name || '').trim();
+                    user.role = profile.role;
+                }
                 this.user = user;
                 return user;
             } catch (err) {

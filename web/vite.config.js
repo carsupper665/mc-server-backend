@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-const Api = 'http://localhost:8080'
+const Api = process.env.MC_BACKEND_URL || 'http://localhost:8080'
 export default defineConfig({
   plugins: [
     vue(),

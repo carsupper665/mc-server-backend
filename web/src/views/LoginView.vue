@@ -8,6 +8,7 @@ import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NText, NProgress, use
 const router = useRouter();
 const authStore = useAuthStore();
 const message = useMessage();
+onMounted(() => { if (new URLSearchParams(window.location.search).has('error')) message.error('FGF 登入服務暫時無法使用，請稍後再試'); });
 
 const loginForm = ref({
   username: '',
@@ -231,6 +232,12 @@ onBeforeUnmount(() => {
             
           </n-space>
         </n-form>
+        <div v-if="!isVerifying" class="fgf-login-option">
+          <a href="/Authentication/fgf/login" class="fgf-login-logo" aria-label="使用 FGF 登入" aria-describedby="fgf-login-hint">
+            <img src="/fgf-logo.svg" alt="FGF" width="36" height="36" />
+          </a>
+          <small id="fgf-login-hint">使用 FGF 帳號登入</small>
+        </div>
       </n-card>
     </div>
   </div>
@@ -443,4 +450,42 @@ onBeforeUnmount(() => {
   --n-text-color-pressed: #aab09b !important;
   --n-text-color-focus: #c6ccb1 !important; */
 }
+
+.fgf-login-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fgf-login-logo {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  opacity: 0.85;
+  transition: opacity 150ms ease;
+}
+
+.fgf-login-logo:hover,
+.fgf-login-logo:focus-visible {
+  opacity: 1;
+}
+
+.fgf-login-logo:focus-visible {
+  outline: 2px solid #b8b0e8;
+  outline-offset: 3px;
+}
+
+.fgf-login-option small {
+  color: #a0a6b0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
 </style>

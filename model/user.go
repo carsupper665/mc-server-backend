@@ -12,6 +12,8 @@ import (
 )
 
 type User struct {
+	FGFSubject *string `gorm:"size:64;uniqueIndex" json:"-"`
+
 	ID                 uint           `gorm:"primaryKey;autoIncrement" json:"id"`
 	Username           string         `gorm:"size:12;not null;uniqueIndex" json:"username"`
 	DisplayName        string         `json:"display_name" gorm:"index" validate:"max=20"`

@@ -31,6 +31,8 @@ func SetAuthRouter(router *gin.Engine) {
 		//auth.POST("/verify", controller.VerifyLogin)
 		auth.GET("/verify", lc.UrlVerifyLogin)
 		auth.GET("/challenge", lc.ExchangeToken)
+		auth.GET("/fgf/login", controller.FGFLogin)
+		auth.POST("/fgf/callback", controller.FGFCallback)
 		//auth.POST("/app/verify", controller.VerifyLogin)// 代刪除
 		//auth.POST("/app/login", controller.AppLogin) // 代刪除
 		//auth.POST("/oidc/login", controller.OIDCLogin)
