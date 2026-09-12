@@ -3,7 +3,7 @@ package common
 
 const (
 	Version                 = "v1.1.0"
-	Build                   = "-beta-2.7r3"
+	Build                   = "-beta-2.7r6"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
