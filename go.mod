@@ -3,6 +3,7 @@ module go-backend
 go 1.24.4
 
 require (
+	github.com/carsupper665/Frog-Grid-Forge/fgf-oidc v0.0.0-20260910143357-b58a55ae7456
 	github.com/coreos/go-oidc/v3 v3.9.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/google/uuid v1.6.0
@@ -80,7 +81,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/datatypes v1.2.6
 )
-
-require github.com/carsupper665/Frog-Grid-Forge/fgf-oidc v0.0.0
-
-replace github.com/carsupper665/Frog-Grid-Forge/fgf-oidc => ../fgf-oidc
