@@ -54,7 +54,7 @@ func NewUser(c *gin.Context) {
 		return
 	}
 	if err := model.AddUser(req.Username, req.Email, req.DisplayName, req.Password, req.Role); err != nil {
-		c.JSON(500, gin.H{"message": "Failed to create user", "request_id": c.Request.Context().Value(common.RequestIdKey)})
+		c.JSON(500, gin.H{"message": "Failed to create user", "request_id": common.ReqId(c)})
 		common.Logger.Errorf("Failed to create user: %v", err)
 		return
 	}

@@ -14,6 +14,7 @@ import (
 func fgfConfig() fgfoidc.Config { return fgfoidc.FromEnv(os.Getenv, "mc_fgf_flow") }
 func FGFLogin(c *gin.Context) {
 	if err := fgfConfig().Begin(c.Writer, c.Request); err != nil {
+		logger.Errorf("FGF login begin: %v, ReqId: %s", err, reqid(c))
 		c.Redirect(http.StatusFound, "/login?error=fgf_unavailable")
 	}
 }

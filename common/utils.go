@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func GetRandomString(length int) string {
@@ -42,6 +44,10 @@ func GetTimeString() string {
 
 func DownloadFile(dest, url string) error {
 	return DownloadFileContext(context.Background(), http.DefaultClient, dest, url, nil, -1)
+}
+
+func ReqId(c *gin.Context) any {
+	return c.Request.Context().Value(RequestIdKey)
 }
 
 func SendErrorToDc(msg string) error {

@@ -65,6 +65,7 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.POST("/property/upload/:server_id", c.UploadProperty)
 
 		serverApi.POST("/command/:server_id", c.SendCommand)
+		serverApi.POST("/cmd/:server_id", c.SendCommand) // 舊版web 還在用舊的端口
 		serverApi.GET("/usage/:server_id", c.ServerUsage)
 		serverApi.GET("/log/:server_id", c.GetServerLog)
 		serverApi.GET("/details/:server_id", controller.ServerDetails)

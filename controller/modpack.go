@@ -3,14 +3,17 @@ package controller
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"go-backend/common"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"go-backend/model"
 	"go-backend/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 func ModpackConfig(c *gin.Context) {
@@ -19,11 +22,15 @@ func ModpackConfig(c *gin.Context) {
 
 // Raw ZIP body avoids a second server-side preview/upload protocol.
 func ImportModpack(c *gin.Context) {
+	var reqId any
+	reqId = common.ReqId(c)
 	_, _, owner, _ := getPayloadAndId(c)
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.MRPackLimit())
 	file, err := os.CreateTemp("", "mrpack-*.mrpack")
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		logger.Errorf("create temp file: %v, req_id: %v", err, reqId)
+		resMsg := fmt.Sprintf("Fail to Import Modpack, your Request Id %v", reqId)
+		c.JSON(500, gin.H{"error": resMsg, "request_id": reqId})
 		return
 	}
 	accepted := false
@@ -40,17 +47,21 @@ func ImportModpack(c *gin.Context) {
 		if errors.As(err, &limit) {
 			status = 413
 		}
-		c.JSON(status, gin.H{"error": err.Error(), "max_size": service.MRPackLimit()})
+		resMsg := fmt.Sprintf("Fail to Import Modpack, check modpack size, your Request Id %v", reqId)
+		c.JSON(status, gin.H{"error": resMsg, "max_size": service.MRPackLimit(), "request_id": reqId})
+		logger.Errorf("Io copy error: %v, req_id: %v", err, reqId)
 		return
 	}
 	pack, err := service.ParseMRPack(file, size, service.MRPackBlacklist())
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		logger.Errorf("Mod pack parse error: %v, req_id: %v", err, reqId)
+		c.JSON(400, gin.H{"error": "Mod Pack Parse Error", "request_id": reqId})
 		return
 	}
 	session, err := service.StartModpackInstall(owner, pack, file)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		logger.Errorf("Fail to Start Mod Pack Install Error: %v, req_id: %v", err, reqId)
+		c.JSON(400, gin.H{"error": "Start Install Error", "request_id": reqId})
 		return
 	}
 	accepted = true
