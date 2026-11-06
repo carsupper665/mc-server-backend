@@ -5,7 +5,7 @@ import {
   NModal, NForm, NFormItem, NSelect, NInput, useMessage 
 } from 'naive-ui';
 import { PlusOutlined, ReloadOutlined } from '@vicons/antd';
-import api from '../api';
+import api, { getSanitizedErrorMessage } from '../api';
 import { useRouter } from 'vue-router';
 import { useVersionCacheStore } from '../store/versionCache';
 import MinecraftLoader from '../components/MinecraftLoader.vue';
@@ -49,7 +49,7 @@ watch(() => createForm.value.server_type, () => {
 const fetchServers = async () => {
   loading.value = true;
   try {
-    const res = await api.get('/user/myservers');
+    const res = await api.get('/user/myservers', { silent: true });
     let list = [];
     if (Array.isArray(res)) {
         list = res;
@@ -70,7 +70,7 @@ const fetchServers = async () => {
         if (srv.install_status && srv.install_status !== 'completed') { return { ...srv, type, status: srv.install_status }; }
         try {
             // Use POST as per backend controller definition
-            const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`);
+            const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`, { silent: true });
             // Check for status field in response
             if (statusRes && statusRes.status) {
                 status = statusRes.status;
@@ -95,7 +95,7 @@ const fetchServers = async () => {
 
 const fetchVersions = async () => {
   try {
-    let res = await api.get('/api/v1/public/vinfo');
+    let res = await api.get('/api/v1/public/vinfo', { silent: true });
     
     // Defensive check: if response is wrapped in { versions: ... } or { data: ... }
     if (res.versions) res = res.versions;
@@ -144,7 +144,7 @@ const handleCreate = async () => {
       if (isDeploying.value) deployMessage.value = '正在配置伺服器檔案...';
     }, 5000);
     
-    const res = await api.post(`/api/v1/server/create`, createForm.value);
+    const res = await api.post(`/api/v1/server/create`, createForm.value, { timeout: 600000, silent: true });
     message.success('伺服器建立成功！');
     showCreateModal.value = false;
     
@@ -153,7 +153,7 @@ const handleCreate = async () => {
     
     fetchServers();
   } catch (err) {
-    message.error('建立失敗: ' + (err.response?.data?.error || '未知錯誤'));
+    message.error('建立失敗: ' + getSanitizedErrorMessage(err));
   } finally {
     creating.value = false;
     isDeploying.value = false;

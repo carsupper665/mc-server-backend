@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createDiscreteApi } from 'naive-ui';
+import { createDiscreteApi, darkTheme } from 'naive-ui';
 import { sanitizeErrorMessage } from '../utils/errorMapping';
 import { triggerBackoff, resetBackoff } from '../composables/useRateLimitGuard';
 import { clearAuthSession, ensureDeviceId, getAccessToken } from '../utils/authStorage';
@@ -7,7 +7,7 @@ import { clearAuthSession, ensureDeviceId, getAccessToken } from '../utils/authS
 // 建立獨立的 message API (可在非 Vue 元件中使用)
 const { message } = createDiscreteApi(['message'], {
     configProviderProps: {
-        theme: undefined // 使用預設暗色主題
+        theme: darkTheme
     }
 });
 
@@ -27,8 +27,8 @@ const friendlyErrorMessages = {
 
 // 需要靜默處理的錯誤 (不顯示 Toast)
 const silentErrors = [
-    '/mc-api/a/status/', // 狀態檢查錯誤不需要提示
-    '/server-api/a/log/' // Log 獲取錯誤不需要提示
+    '/api/v1/server/status/', // 狀態檢查錯誤不需要提示
+    '/api/v1/server/log/' // Log 獲取錯誤不需要提示
 ];
 
 const api = axios.create({
@@ -132,7 +132,7 @@ api.interceptors.response.use(
             clearAuthSession();
 
             if (!skipAuthRedirect && !window.location.pathname.startsWith('/login')) {
-                message.warning('登入已過期，正在跳轉...');
+                if (!isSilent) message.warning('登入已過期，正在跳轉...');
                 setTimeout(() => {
                     window.location.href = '/login';
                 }, 1000);

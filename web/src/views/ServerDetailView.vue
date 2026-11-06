@@ -63,7 +63,7 @@ const displayPlatform = computed(() => serverDetails.value?.mod_loader || '');
 
 const fetchServerInfo = async () => {
   try {
-    const res = await api.get(`/api/v1/server/details/${props.id}`);
+    const res = await api.get(`/api/v1/server/details/${props.id}`, { silent: true });
     const detail = res?.server || res;
     if (!detail || !detail.server_id) {
       return;
@@ -87,6 +87,8 @@ const termInstance = computed(() => unref(consoleRef.value?.term));
 
 // 樂觀更新狀態
 const isOptimisticLoading = ref(false);
+const actionInFlight = ref(false);
+const actionsDisabled = computed(() => actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
 const optimisticAction = ref(null); // 'starting' | 'stopping' | null
 
 // 整合智慧輪詢 - 稍後在 fetchServerDetail 定義後初始化
@@ -94,7 +96,7 @@ let smartPolling = null;
 
 const fetchServerDetail = async () => {
   try {
-    const res = await api.get(`/api/v1/server/status/${props.id}`);
+    const res = await api.get(`/api/v1/server/status/${props.id}`, { silent: true });
 
 
     // API interceptor 已返回 response.data，所以 res 就是實際資料
@@ -110,40 +112,58 @@ const fetchServerDetail = async () => {
 
     if (status) {
       server.value.status = status;
+      if ((optimisticAction.value === 'starting' && status === 'running') ||
+          (optimisticAction.value === 'stopping' && status === 'stopped')) {
+        isOptimisticLoading.value = false;
+        optimisticAction.value = null;
+      }
 
     } else {
       server.value.status = 'Unknown';
     }
+    return status;
   } catch (err) {
     server.value.status = 'Error';
     console.error('Failed to fetch server status:', err);
   }
 };
 
+let previousLog = '';
+let fetchingLogs = false;
 const fetchLogs = async () => {
-  if (!isRunning.value) return; // 伺服器未運行時不獲取日誌
+  if (document.hidden || fetchingLogs || !isRunning.value) return; // 伺服器未運行時不獲取日誌
+  fetchingLogs = true;
   try {
-    const res = await api.get(`/api/v1/server/log/${props.id}`);
+    const res = await api.get(`/api/v1/server/log/${props.id}`, { silent: true });
     // API interceptor 已返回 response.data
     const logData = res.logs
-    if (logData && typeof logData === 'string' && consoleRef.value) {
-      consoleRef.value.term?.value?.clear?.();
-      consoleRef.value.writeLog(logData);
+    if (typeof logData === 'string' && consoleRef.value && logData !== previousLog) {
+      if (logData.startsWith(previousLog)) {
+        consoleRef.value.writeLog(logData.slice(previousLog.length));
+      } else {
+        consoleRef.value.term?.clear?.();
+        consoleRef.value.writeLog(logData);
+      }
+      previousLog = logData;
     }
   } catch (err) {
     // 靜默處理錯誤，避免頻繁提示
     console.log('Log fetch skipped:', err.message);
+  } finally {
+    fetchingLogs = false;
   }
 };
 
 const handleStart = async () => {
+  if (actionsDisabled.value) return;
+  actionInFlight.value = true;
   // 樂觀更新：立即鎖定按鈕並顯示轉場狀態
   isOptimisticLoading.value = true;
   optimisticAction.value = 'starting';
   server.value.status = 'Starting...';
 
   try {
-    await api.post(`/api/v1/server/start/${props.id}`);
+    await api.post(`/api/v1/server/start/${props.id}`, null, { silent: true });
     message.success('正在啟動伺服器...');
     // 記錄活動
     activityLog.logServerStart(props.id, displayName.value);
@@ -154,24 +174,25 @@ const handleStart = async () => {
     isOptimisticLoading.value = false;
     optimisticAction.value = null;
 
-    if (err.response?.data?.error === 'server already running') {
-      server.value.status = 'Running';
-      return;
-    }
+    await fetchServerDetail();
     const errorMsg = getSanitizedErrorMessage(err);
     message.error('啟動失敗: ' + errorMsg);
     activityLog.logError('啟動伺服器', props.id, errorMsg);
+  } finally {
+    actionInFlight.value = false;
   }
 };
 
 const handleStop = async () => {
+  if (actionsDisabled.value) return;
+  actionInFlight.value = true;
   // 樂觀更新：立即鎖定按鈕並顯示轉場狀態
   isOptimisticLoading.value = true;
   optimisticAction.value = 'stopping';
   server.value.status = 'Stopping...';
 
   try {
-    await api.post(`/api/v1/server/stop/${props.id}`);
+    await api.post(`/api/v1/server/stop/${props.id}`, null, { silent: true });
     message.success('正在停止伺服器...');
     // 記錄活動
     activityLog.logServerStop(props.id, displayName.value);
@@ -184,6 +205,9 @@ const handleStop = async () => {
     const errorMsg = getSanitizedErrorMessage(err);
     message.error('停止失敗: ' + errorMsg);
     activityLog.logError('停止伺服器', props.id, errorMsg);
+    await fetchServerDetail();
+  } finally {
+    actionInFlight.value = false;
   }
 };
 
@@ -200,7 +224,7 @@ const propertiesSaving = ref(false);
 const fetchProperties = async () => {
   propertiesLoading.value = true;
   try {
-    const res = await api.post(`/api/v1/server/property/${props.id}`);
+    const res = await api.post(`/api/v1/server/property/${props.id}`, null, { silent: true });
     // Backend returns { message: "...", property: "..." }
     // API interceptor returns response.data directly
     propertiesContent.value = typeof res === 'string' ? res : res.property || '';
@@ -253,7 +277,7 @@ const normalizeModList = (payload) => {
 const fetchMods = async () => {
   modsLoading.value = true;
   try {
-    const res = await api.get(`/api/v1/server/mod/list/${props.id}`);
+    const res = await api.get(`/api/v1/server/mod/list/${props.id}`, { silent: true });
     mods.value = normalizeModList(res);
   } catch (err) {
     mods.value = [];
@@ -267,7 +291,7 @@ const handleToggleMod = async (mod, nextValue) => {
   const prevValue = mod.enabled;
   mod.enabled = nextValue;
   try {
-    await api.get(`/api/v1/server/mod/toggle/${props.id}`, {
+    await api.get(`/api/v1/server/mod/toggle/${props.id}`, { silent: true,
       params: { mod_id: mod.mod_id },
     });
     message.success(`${mod.name || mod.mod_id} 已${nextValue ? '啟用' : '停用'}`);
@@ -279,7 +303,7 @@ const handleToggleMod = async (mod, nextValue) => {
 
 const handleDeleteMod = async (mod) => {
   try {
-    await api.get(`/api/v1/server/mod/remove/${props.id}`, {
+    await api.get(`/api/v1/server/mod/remove/${props.id}`, { silent: true,
       params: { mod_id: mod.mod_id },
     });
     mods.value = mods.value.filter(item => item.mod_id !== mod.mod_id);
@@ -293,9 +317,11 @@ const handleUpdateMod = async (mod) => {
   if (!mod?.mod_id || updatingMods.value[mod.mod_id]) return;
   updatingMods.value = { ...updatingMods.value, [mod.mod_id]: true };
   try {
-    await api.get(`/api/v1/server/mod/update/${props.id}`, {
+    await api.get(`/api/v1/server/mod/update/${props.id}`, { silent: true,
       params: { mod_id: mod.mod_id },
+      timeout: 600000,
     });
+    await fetchMods();
     message.success('更新已送出');
   } catch (err) {
     message.error('更新失敗: ' + getSanitizedErrorMessage(err));
@@ -311,10 +337,10 @@ const saveProperties = async () => {
   try {
     await api.post(`/api/v1/server/property/upload/${props.id}`, {
       texts: propertiesContent.value,
-    });
+    }, { silent: true });
     message.success('設定已儲存');
   } catch (err) {
-    message.error('儲存失敗: ' + (err.response?.data?.error || '未知錯誤'));
+    message.error('儲存失敗: ' + getSanitizedErrorMessage(err));
   } finally {
     propertiesSaving.value = false;
   }
@@ -346,22 +372,26 @@ const handleCommandSent = () => {
 };
 
 // 備份流程相關函數 - 被 ServerBackups 元件呼叫
-const handleBackupStop = async () => {
+const handleBackupStop = async (done) => {
   try {
-    await api.post(`/api/v1/server/stop/${props.id}`);
+    await api.post(`/api/v1/server/stop/${props.id}`, null, { silent: true });
     smartPolling?.enterActiveMode();
   } catch (err) {
-    console.error('Backup stop error:', err);
+    done(err);
+    return;
   }
+  done();
 };
 
-const handleBackupStart = async () => {
+const handleBackupStart = async (done) => {
   try {
-    await api.post(`/api/v1/server/start/${props.id}`);
+    await api.post(`/api/v1/server/start/${props.id}`, null, { silent: true });
     smartPolling?.enterActiveMode();
   } catch (err) {
-    console.error('Backup start error:', err);
+    done(err);
+    return;
   }
+  done();
 };
 
 onMounted(() => {
@@ -369,7 +399,6 @@ onMounted(() => {
   // loadCommandHistory();
 
   fetchServerInfo();
-  fetchServerDetail();
 
   // 初始化智慧輪詢
   smartPolling = useSmartPolling(fetchServerDetail, {
@@ -377,8 +406,9 @@ onMounted(() => {
     activeInterval: 2000, // 活躍模式: 2 秒
     activeDuration: 30000, // 活躍持續: 30 秒
     onStatusChange,
-    disableIdle: true,
   });
+
+  smartPolling.startPolling();
 
   // Logs 仍使用固定間隔
   const logInterval = setInterval(fetchLogs, 5000);
@@ -402,7 +432,7 @@ onMounted(() => {
           </n-space>
 
           <n-space>
-            <n-button type="primary" ghost :disabled="isRunning" @click="handleStart">
+            <n-button type="primary" ghost :disabled="actionsDisabled || isRunning" @click="handleStart">
               <template #icon
                 ><n-icon><CaretRightOutlined /></n-icon
               ></template>
@@ -410,7 +440,7 @@ onMounted(() => {
             </n-button>
             <n-popconfirm title="確定要停止伺服器嗎？" @positive-click="handleStop">
               <template #trigger>
-                <n-button type="error" ghost :disabled="!isRunning">
+                <n-button type="error" ghost :disabled="actionsDisabled || !isRunning">
                   <template #icon
                     ><n-icon><PoweroffOutlined /></n-icon
                   ></template>

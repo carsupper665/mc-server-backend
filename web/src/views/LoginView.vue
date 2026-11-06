@@ -57,8 +57,6 @@ const stopCountdown = () => {
 };
 
 const errorText = (err, fallback = '未知錯誤') => {
-  const explicit = err.response?.data?.error;
-  if (explicit) return explicit;
   const sanitized = getSanitizedErrorMessage(err);
   return sanitized || fallback;
 };

@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { NButton, NIcon, NText, NTag } from 'naive-ui';
+import { sanitizeErrorMessage } from '../utils/errorMapping';
+import { useModInstallStore } from '../store/modInstall';
 import { MinusOutlined, ExpandOutlined } from '@vicons/antd';
 
 const props = defineProps({
@@ -10,6 +12,7 @@ const props = defineProps({
   }
 });
 
+const installStore = useModInstallStore();
 const collapsed = ref(false);
 
 const activeCount = computed(() => {
@@ -35,22 +38,16 @@ const stageLabel = (stage, status) => {
     case 'retrying': return '重試下載';
     case 'metadata': return '紀錄模組';
     case 'queued':
-      console.log("queued")
       return '排隊中';
     case 'resolving':
-      console.log("resolving")
       return '解析相依';
     case 'downloading':
-      console.log('下載中')
       return '下載中';
     case 'installed':
-      console.log('已安裝')
       return '已安裝';
     case 'skipped':
-      console.log("skip");
       return '略過';
     case 'completed':
-      console.log('completed')
       return '完成';
     default:
       return stage || '處理中';
@@ -92,6 +89,7 @@ const stageClass = (stage, status) => {
 
       <div class="panel-body">
         <div v-for="job in jobs" :key="job.jobId" class="job-card">
+          <n-button v-if="['completed', 'failed'].includes(job.status)" size="tiny" quaternary @click="installStore.dismissJob(job.jobId)">關閉</n-button>
           <div class="job-header">
             <div class="job-summary">
               <img v-if="job.modIcon" :src="job.modIcon" class="job-icon" alt="mod icon" />
@@ -117,7 +115,7 @@ const stageClass = (stage, status) => {
             {{ job.message }}
           </div>
           <div v-if="job.error" class="job-error">
-            {{ job.error }}
+            {{ sanitizeErrorMessage(job.error) }}
           </div>
         </div>
       </div>

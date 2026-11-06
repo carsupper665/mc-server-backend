@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { ref, shallowRef, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { 
   NInput, NButton, NSpace, NText, NBadge, NInputGroup, 
   NInputGroupLabel, useMessage, NModal, NTabs, NTabPane 
@@ -175,7 +175,7 @@ import {
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
-import api from '../api';
+import api, { getSanitizedErrorMessage } from '../api';
 
 const props = defineProps({
   serverId: {
@@ -187,7 +187,7 @@ const props = defineProps({
     default: false
   },
   macroStatus: {
-    type: String,
+    type: Object,
     default: null
   }
 });
@@ -197,8 +197,8 @@ const message = useMessage();
 
 // Terminal 實例
 const terminalContainer = ref(null);
-const term = ref(null);
-const fitAddon = ref(null);
+const term = shallowRef(null);
+const fitAddon = shallowRef(null);
 
 // 狀態
 const inputCommand = ref('');
@@ -376,11 +376,11 @@ const sendCommand = async () => {
   try {
     await api.post(`/api/v1/server/cmd/${props.serverId}`, {
       command: cmd
-    });
+    }, { silent: true });
     // 成功不需特別提示，日誌會顯示結果
     emit('command-sent', cmd);
   } catch (err) {
-    const errorMsg = err.response?.data?.error || err.message;
+    const errorMsg = getSanitizedErrorMessage(err);
     term.value.writeln(`\x1b[1;31mError sending command: ${errorMsg}\x1b[0m`);
     message.error('指令發送失敗');
   } finally {
