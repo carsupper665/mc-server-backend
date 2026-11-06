@@ -254,7 +254,11 @@ const initTerminal = () => {
   
   // 監聽視窗大小變化
   window.addEventListener('resize', handleResize);
+  resizeObserver = new ResizeObserver(handleResize);
+  resizeObserver.observe(terminalContainer.value);
 };
+
+let resizeObserver;
 
 const handleResize = () => {
   if (fitAddon.value && term.value && terminalContainer.value) {
@@ -408,6 +412,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+  resizeObserver?.disconnect();
   // 正確清理順序：先清理 addon，再清理 terminal
   try {
     if (fitAddon.value) {
@@ -492,5 +497,10 @@ defineExpose({
 
 .quick-commands {
   padding-top: 4px;
+}
+@media (max-width: 767px) {
+  .server-console { height: auto; min-height: 560px; }
+  .terminal-container { min-height: 300px; }
+  .console-footer { flex-shrink: 0; }
 }
 </style>

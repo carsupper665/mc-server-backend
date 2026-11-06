@@ -102,6 +102,10 @@ const breadcrumbs = computed(() => {
     crumbs.push({ label: 'Dashboard', to: '/' });
   } else if (name === 'Servers') {
     crumbs.push({ label: 'Servers', to: '/servers' });
+  } else if (name === 'Mods') {
+    crumbs.push({ label: 'Mods', to: '/mods' });
+  } else if (name === 'AmongUs') {
+    crumbs.push({ label: 'Among Us', to: '/among-us' });
   } else if (name === 'ServerDetail') {
     crumbs.push({ label: 'Servers', to: '/servers' });
     crumbs.push({ label: route.params.id || 'Detail', to: null });
@@ -192,7 +196,7 @@ const goToSystem = () => {
         </div>
       </n-layout-header>
       
-      <n-layout-content content-style="padding: 24px;" class="content-area">
+      <n-layout-content content-style="padding: var(--content-padding, 24px);" class="content-area">
         <router-view v-slot="{ Component }">
           <transition name="fade-transform" mode="out-in">
             <component :is="Component" />
@@ -206,6 +210,7 @@ const goToSystem = () => {
 <style scoped>
 .main-container {
   height: 100vh;
+  height: 100dvh;
 }
 
 .sider {
@@ -360,5 +365,25 @@ const goToSystem = () => {
   .header {
     padding: 0 16px;
   }
+}
+.left-section, .page-info { min-width: 0; }
+.left-section { flex: 1; }
+.header-content { gap: 12px; }
+.header-content > :last-child, .mobile-menu-btn { flex-shrink: 0; }
+.page-info { overflow: hidden; }
+.nav-breadcrumb { white-space: nowrap; }
+.nav-breadcrumb :deep(ul) { display: flex; min-width: 0; }
+.nav-breadcrumb :deep(.n-breadcrumb-item:not(:last-child)) { flex-shrink: 0; }
+.nav-breadcrumb :deep(.n-breadcrumb-item) { min-width: 0; }
+.nav-breadcrumb :deep(.n-breadcrumb-item__link) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .content-area { --content-padding: 12px; }
+  .nav-breadcrumb :deep(.n-breadcrumb-item:not(:last-child)) { display: none; }
+  .nav-breadcrumb :deep(.n-breadcrumb-item__separator) { display: none; }
 }
 </style>

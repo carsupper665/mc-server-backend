@@ -46,9 +46,10 @@ const show = computed({
 });
 
 const modalStyle = computed(() => ({
-  width: 'min(65vw, 620px)',
-  aspectRatio: '4 / 3',
-  maxHeight: '80vh'
+  width: 'min(94vw, 620px)',
+  maxHeight: '80dvh',
+  display: 'flex',
+  flexDirection: 'column'
 }));
 
 const selectedServerId = ref('');
@@ -216,6 +217,7 @@ watch([() => props.mod, selectedServerId], () => {
     :closable="!installing"
     :mask-closable="!installing"
     :style="modalStyle"
+    content-style="overflow-y: auto; min-height: 0;"
   >
     <div v-if="!mod" class="empty-state">
       <n-text depth="3">尚未選擇模組</n-text>
@@ -407,20 +409,12 @@ watch([() => props.mod, selectedServerId], () => {
   text-align: center;
 }
 
-.install-modal :deep(.n-card) {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.install-modal :deep(.n-card__content) {
-  flex: 1;
-  overflow-y: auto;
-}
-
-@media (max-width: 768px) {
-  .install-modal :deep(.n-card) {
-    max-height: 90vh;
-  }
+.mod-summary, .mod-header-info { min-width: 0; }
+.mod-summary { flex: 1; }
+.mod-icon { flex-shrink: 0; }
+.mod-title, .mod-author, .mod-description { overflow-wrap: anywhere; }
+.info-block { box-sizing: border-box; }
+@media (max-width: 600px) {
+  .modal-header { flex-direction: column; align-items: stretch; }
 }
 </style>

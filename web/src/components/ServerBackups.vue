@@ -208,7 +208,7 @@ defineExpose({ fetchBackups });
       v-model:show="showRecoverModal"
       preset="card"
       title="☠️ 還原備份 - 危險操作"
-      class="recover-modal"
+      :style="{ width: 'min(450px, 94vw)' }"
       :closable="!isRecovering"
       :mask-closable="!isRecovering"
     >
@@ -247,7 +247,7 @@ defineExpose({ fetchBackups });
       v-model:show="showBackupConfirmModal"
       preset="card"
       title="⚠️ 伺服器運行中"
-      class="backup-confirm-modal"
+      :style="{ width: 'min(450px, 94vw)' }"
       :closable="true"
       :mask-closable="true"
     >
@@ -315,10 +315,6 @@ defineExpose({ fetchBackups });
   padding: 20px 0;
 }
 
-.recover-modal {
-  width: 90%;
-  max-width: 450px;
-}
 
 .recover-warning {
   margin-bottom: 16px;
@@ -333,10 +329,6 @@ defineExpose({ fetchBackups });
 }
 
 /* 備份確認 Modal */
-.backup-confirm-modal {
-  width: 90%;
-  max-width: 450px;
-}
 
 .backup-confirm-content {
   line-height: 1.6;

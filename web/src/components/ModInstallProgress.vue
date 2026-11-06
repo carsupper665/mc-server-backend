@@ -145,7 +145,8 @@ const stageClass = (stage, status) => {
 }
 
 .install-panel {
-  width: 340px;
+  width: min(340px, calc(100vw - 24px));
+  box-sizing: border-box;
   background: #1a1a20;
   border: 1px solid #333;
   border-radius: 12px;
@@ -168,7 +169,7 @@ const stageClass = (stage, status) => {
 }
 
 .panel-body {
-  max-height: 320px;
+  max-height: min(320px, 40vh);
   overflow-y: auto;
   padding: 10px 12px 14px;
   display: flex;
@@ -266,5 +267,12 @@ const stageClass = (stage, status) => {
   100% {
     background-position: 200% 50%;
   }
+}
+.job-summary, .job-summary > div { min-width: 0; }
+.job-icon { flex-shrink: 0; }
+.job-title, .job-sub, .job-message, .job-error { overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .install-floating { right: 12px; bottom: 12px; }
+  .job-header { flex-wrap: wrap; }
 }
 </style>

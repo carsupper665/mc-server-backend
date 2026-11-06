@@ -2,16 +2,18 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { 
   NSpace, NButton, NCard, NDataTable, NTag, NIcon, NText,
-  NModal, NForm, NFormItem, NSelect, NInput, useMessage 
+  NModal, NForm, NFormItem, NSelect, NInput, NSpin, NEmpty, useMessage
 } from 'naive-ui';
 import { PlusOutlined, ReloadOutlined } from '@vicons/antd';
 import api, { getSanitizedErrorMessage } from '../api';
 import { useRouter } from 'vue-router';
 import { useVersionCacheStore } from '../store/versionCache';
+import { useMobileLayout } from '../composables/useMobileLayout';
 import MinecraftLoader from '../components/MinecraftLoader.vue';
 import ModpackImport from '../components/ModpackImport.vue';
 import { useModInstallStore } from '../store/modInstall';
 
+const isMobile = useMobileLayout();
 const message = useMessage();
 const router = useRouter();
 const versionCache = useVersionCacheStore();
@@ -223,7 +225,7 @@ onMounted(() => {
         </n-space>
       </div>
 
-      <n-card class="table-card" :bordered="false" content-style="padding: 0;">
+      <n-card v-if="!isMobile" class="table-card" :bordered="false" content-style="padding: 0;">
         <div class="table-container">
           <n-data-table
             :columns="columns"
@@ -233,9 +235,23 @@ onMounted(() => {
           />
         </div>
       </n-card>
+      <n-spin v-else :show="loading">
+        <div class="server-list" :aria-busy="loading">
+          <n-empty v-if="!servers.length" :description="loading ? '載入中...' : '尚無伺服器'" />
+          <n-card v-for="server in servers" :key="server.server_id" :bordered="false">
+            <h3 class="server-name">{{ server.display_name }}</h3>
+            <div class="server-id">{{ server.server_id }}</div>
+            <n-space class="server-tags">
+              <n-tag :type="server.type === 'Fabric' ? 'info' : server.type === 'Vanilla' ? 'success' : 'default'" size="small">{{ server.type }}</n-tag>
+              <n-tag :type="server.status?.toLowerCase?.() === 'running' ? 'success' : 'error'" size="small">{{ server.status }}</n-tag>
+            </n-space>
+            <n-button block ghost type="primary" @click="router.push({ name: 'ServerDetail', params: { id: server.server_id }, query: { display_name: server.display_name } })">管理</n-button>
+          </n-card>
+        </div>
+      </n-spin>
     </n-space>
 
-    <n-modal v-model:show="showCreateModal" preset="card" class="create-modal" title="DEPLOY NEW INSTANCE">
+    <n-modal v-model:show="showCreateModal" preset="card" :style="{ width: 'min(500px, 94vw)' }" title="DEPLOY NEW INSTANCE">
       <!-- 部署中 Loading 動畫 -->
       <template v-if="isDeploying">
         <MinecraftLoader :message="deployMessage" />
@@ -296,10 +312,10 @@ onMounted(() => {
   overflow-x: auto;
 }
 
-.create-modal {
-  width: 90%;
-  max-width: 500px;
-}
+.server-list { display: grid; gap: 12px; }
+.server-name { margin: 0 0 8px; overflow-wrap: anywhere; }
+.server-id { font: 12px 'Fira Code', monospace; overflow-wrap: anywhere; }
+.server-tags { margin: 12px 0; }
 
 :deep(.n-data-table) {
   background-color: transparent;

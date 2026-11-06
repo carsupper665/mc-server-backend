@@ -279,7 +279,7 @@ onMounted(() => {
       v-model:show="showEditor"
       preset="card"
       :title="editingMacro ? '編輯巨集' : '新增巨集'"
-      class="macro-editor-modal"
+      :style="{ width: 'min(500px, 94vw)' }"
       :closable="!isExecuting"
       :mask-closable="!isExecuting"
     >
@@ -364,9 +364,6 @@ say Goodbye"
   margin-right: 8px;
 }
 
-.macro-editor-modal {
-  max-width: 500px;
-}
 
 .commands-input :deep(.n-input__textarea-el) {
   font-family: 'Fira Code', monospace !important;
