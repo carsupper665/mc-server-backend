@@ -45,9 +45,9 @@ export function useSmartPolling(fetchFn, options = {}) {
             const result = await fetchFn();
 
             // 如果提供了狀態變更回調，檢查是否需要提前退出活躍模式
-            if (options.onStatusChange && previousStatus !== null) {
-                const currentStatus = typeof result === 'string' ? result : result?.status;
-                if (currentStatus && currentStatus !== previousStatus) {
+            const currentStatus = typeof result === 'string' ? result : result?.status;
+            if (currentStatus) {
+                if (options.onStatusChange && previousStatus !== null && currentStatus !== previousStatus) {
                     options.onStatusChange(currentStatus, previousStatus);
                     // 狀態已變更，退出活躍模式
                     if (isActive.value) {

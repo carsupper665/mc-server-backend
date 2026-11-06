@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { NSpace, NText, useMessage } from 'naive-ui';
-import api from '../api';
+import api, { getSanitizedErrorMessage } from '../api';
 import ModBrowser from '../components/ModBrowser.vue';
 import ModInstallModal from '../components/ModInstallModal.vue';
 import { useModInstallStore } from '../store/modInstall';
@@ -21,7 +21,7 @@ const placeholderIcon = 'https://cdn.modrinth.com/placeholder.svg';
 const fetchServers = async () => {
   loadingServers.value = true;
   try {
-    const res = await api.get('/user/myservers');
+    const res = await api.get('/user/myservers', { silent: true });
     if (Array.isArray(res)) {
       servers.value = res;
     } else {
@@ -52,7 +52,7 @@ const handleInstall = async ({ mod, server, versionId }) => {
       version_id: versionId || '',
       auto_update: true
     };
-    const res = await api.post(`/api/v1/server/mod/add/${server.server_id}?async=true`, payload);
+    const res = await api.post(`/api/v1/server/mod/add/${server.server_id}?async=true`, payload, { silent: true });
     const jobId = res.job_id;
     if (!jobId) {
       message.error('無法取得安裝工作 ID');
@@ -76,7 +76,7 @@ const handleInstall = async ({ mod, server, versionId }) => {
     message.success('已加入安裝佇列');
     showInstallModal.value = false;
   } catch (err) {
-    message.error('安裝失敗: ' + (err.response?.data?.error || '未知錯誤'));
+    message.error('安裝失敗: ' + getSanitizedErrorMessage(err));
   } finally {
     installing.value = false;
   }

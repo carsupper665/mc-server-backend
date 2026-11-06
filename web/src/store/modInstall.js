@@ -10,6 +10,13 @@ export const useModInstallStore = defineStore('modInstall', {
   }),
 
   actions: {
+    dismissJob(jobId) {
+      const job = this.jobs.find(job => job.jobId === jobId);
+      if (!job || !['completed', 'failed'].includes(job.status)) return;
+      this.closeJobStream(jobId);
+      this.jobs = this.jobs.filter(job => job.jobId !== jobId);
+    },
+
     addJob(job) {
       if (!job || !job.jobId) return;
       this.jobs = [job, ...this.jobs];

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, shallowRef, computed, watch } from 'vue';
 import { NButton, NModal, NSpace, NInput, NText, NAlert, NSpin, useMessage } from 'naive-ui';
-import api from '../api';
+import api, { getSanitizedErrorMessage } from '../api';
 import ModpackFileBrowser from './ModpackFileBrowser.vue';
 import { useModInstallStore } from '../store/modInstall';
 import { readMRPack, buildMRPack, formatPackSize, overrideText } from '../utils/mrpack';
@@ -46,8 +46,8 @@ async function open() {
   show.value = true;
   loading.value = true;
   error.value = '';
-  try { config.value = await api.get('/api/v1/server/modpack/config'); }
-  catch (err) { config.value = null; error.value = err.response?.data?.error || err.message; }
+  try { config.value = await api.get('/api/v1/server/modpack/config', { silent: true }); }
+  catch (err) { config.value = null; error.value = getSanitizedErrorMessage(err); }
   finally { loading.value = false; }
 }
 
@@ -99,7 +99,7 @@ async function submit() {
   if (submitting.value) return;
   submitting.value = true;
   try {
-    const result = await api.post('/api/v1/server/modpack/import', prepared.value.blob, { timeout: 0, headers: { 'Content-Type': 'application/x-modrinth-modpack+zip' } });
+    const result = await api.post('/api/v1/server/modpack/import', prepared.value.blob, { silent: true, timeout: 0, headers: { 'Content-Type': 'application/x-modrinth-modpack+zip' } });
     installs.addJob({ jobId: result.ins_ses_id, serverId: result.server_id, serverName: name.value, modTitle: name.value, status: 'queued', stage: 'queued', percent: 0 });
     confirming.value = false;
     show.value = false;
@@ -107,7 +107,7 @@ async function submit() {
     prepared.value = null;
     emit('submitted');
     message.success('已建立整合包安裝工作');
-  } catch (err) { error.value = err.response?.data?.error || err.message; confirming.value = false; }
+  } catch (err) { error.value = getSanitizedErrorMessage(err); confirming.value = false; }
   finally { submitting.value = false; }
 }
 </script>

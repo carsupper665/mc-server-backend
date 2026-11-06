@@ -64,7 +64,7 @@ export const useAuthStore = defineStore('auth', {
                 const payload = isEmail(username)
                     ? { email: username, password }
                     : { username, password };
-                const res = await api.withMeta.post('/Authentication/login', payload, {
+                const res = await api.withMeta.post('/Authentication/login', payload, { silent: true,
                     skipAuthToken: true
                 });
 
@@ -105,7 +105,7 @@ export const useAuthStore = defineStore('auth', {
                     if (query.error) throw new Error('FGF 登入未完成，請重新登入');
                     const res = await api.withMeta.post('/Authentication/fgf/callback', {
                         code: String(query.code || ''), state: String(query.state || '')
-                    }, { skipAuthToken: true, skipAuthRedirect: true });
+                    }, { silent: true, skipAuthToken: true, skipAuthRedirect: true });
                     if (!res.data?.token) throw new Error('FGF 登入失敗');
                     setAccessToken(res.data.token);
                     await this.fetchUser();
@@ -179,8 +179,13 @@ export const useAuthStore = defineStore('auth', {
                 this.user = user;
                 return user;
             } catch (err) {
-                this.clearAuthState();
-                throw err;
+                const fallback = buildUserFromToken(token);
+                if (err.response?.status === 401 || !fallback || isTokenExpired(payload)) {
+                    this.clearAuthState();
+                    throw err;
+                }
+                this.user = fallback;
+                return fallback;
             }
         }
     }

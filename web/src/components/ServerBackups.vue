@@ -43,7 +43,7 @@ const isRecovering = ref(false);
 const fetchBackups = async () => {
   loading.value = true;
   try {
-    const res = await api.get(`/api/v1/server/list/backup/${props.serverId}`);
+    const res = await api.get(`/api/v1/server/list/backup/${props.serverId}`, { silent: true });
     // api interceptor returns response.data directly
     backups.value = res && res.backups ? res.backups.map(b => ({ name: b })) : [];
   } catch (err) {
@@ -67,18 +67,14 @@ const handleBackup = async () => {
 // 執行備份（伺服器必須已停止）
 const executeBackup = async () => {
   try {
-    await api.get(`/api/v1/server/backup/${props.serverId}`);
+    await api.post(`/api/v1/server/backup/${props.serverId}`, {}, { timeout: 600000, silent: true });
     message.success('備份完成！');
     activityLog.logBackup(props.serverId, props.serverName);
     fetchBackups();
     return true;
   } catch (err) {
     const errorMsg = getSanitizedErrorMessage(err);
-    if (errorMsg.toLowerCase().includes('running') || err.response?.status === 500) {
-      message.error('備份失敗：伺服器運行中無法備份');
-    } else {
-      message.error(`備份失敗: ${errorMsg}`);
-    }
+    message.error(`備份失敗: ${errorMsg}`);
     activityLog.logError('備份失敗', props.serverId, errorMsg);
     return false;
   }
@@ -96,7 +92,7 @@ const executeFullBackupFlow = async () => {
     // 步驟 1: 停止伺服器
     backupProgress.value = '正在停止伺服器...';
     message.info('正在停止伺服器以進行備份...');
-    emit('request-stop');
+    await new Promise((resolve, reject) => emit('request-stop', error => error ? reject(error) : resolve()));
     
     // 等待伺服器停止 (輪詢檢查)
     let attempts = 0;
@@ -116,20 +112,19 @@ const executeFullBackupFlow = async () => {
     const backupSuccess = await executeBackup();
     
     if (!backupSuccess) {
-      message.error('備份失敗，伺服器將保持停止狀態');
       return;
     }
     
     // 步驟 3: 重啟伺服器
     backupProgress.value = '正在重新啟動伺服器...';
     message.info('備份完成，正在重新啟動伺服器...');
-    emit('request-start');
+    await new Promise((resolve, reject) => emit('request-start', error => error ? reject(error) : resolve()));
     
     message.success('備份流程完成！伺服器正在重新啟動。');
     emit('backup-started');
     
   } catch (err) {
-    message.error('備份流程發生錯誤: ' + err.message);
+    message.error('備份流程發生錯誤: ' + getSanitizedErrorMessage(err));
   } finally {
     isBackingUp.value = false;
     backupProgress.value = '';
@@ -153,7 +148,7 @@ const confirmRecover = async () => {
     await api.post(`/api/v1/server/recover`, {
       server_id: props.serverId,
       file_name: recoveringBackup.value.name,
-    });
+    }, { timeout: 600000, silent: true });
     message.success('還原成功！伺服器將重新啟動。');
     activityLog.logRecover(props.serverId, props.serverName, recoveringBackup.value.name);
     showRecoverModal.value = false;

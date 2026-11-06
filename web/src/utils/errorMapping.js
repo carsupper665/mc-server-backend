@@ -5,6 +5,9 @@
 
 // 精確匹配對照表
 const exactErrorMappings = {
+    'invalid_callback': '登入回呼無效，請重新登入',
+    'fgf_account_unavailable': 'FGF 帳號暫時無法使用，請稍後再試',
+    'session_failed': '無法建立登入階段，請重新登入',
     'record not found': '找不到該項目',
     'not found': '找不到該項目',
     'unauthorized': '登入已過期，請重新登入',
@@ -23,7 +26,7 @@ const exactErrorMappings = {
 
 // 包含匹配對照表 (用於模糊匹配)
 const partialErrorMappings = [
-    { pattern: /傻逼|傻b|sb|fuck|shit|damn/i, message: '發生未知的伺服器錯誤' },
+    { pattern: /傻逼|傻b|\bsb\b|fuck|shit|damn/i, message: '發生未知的伺服器錯誤' },
     { pattern: /sql|database|query|syntax/i, message: '資料處理發生錯誤' },
     { pattern: /panic|fatal|crash/i, message: '伺服器發生嚴重錯誤，請聯絡管理員' },
     { pattern: /nil pointer|null pointer|undefined/i, message: '伺服器內部錯誤' },
@@ -40,6 +43,7 @@ const partialErrorMappings = [
  * @returns {string} - 友善的錯誤訊息
  */
 export function sanitizeErrorMessage(errorMessage) {
+    if (errorMessage && typeof errorMessage === 'object') errorMessage = errorMessage.message;
     if (!errorMessage || typeof errorMessage !== 'string') {
         return '發生未知錯誤';
     }

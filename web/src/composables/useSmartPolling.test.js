@@ -121,4 +121,23 @@ describe('useSmartPolling', () => {
         expect(fetchFn).toHaveBeenCalledTimes(1);
         expect(result).toEqual({ status: 'Running' });
     });
+    it('tracks the initial status, ignores missing results and clears optimistic state on change', async () => {
+        const optimistic = ref(true);
+        const onStatusChange = vi.fn(() => { optimistic.value = false; });
+        const fetchFn = vi.fn().mockResolvedValueOnce('stopped').mockResolvedValueOnce(undefined).mockResolvedValue('running');
+        const polling = useSmartPolling(fetchFn, { onStatusChange });
+        polling.startPolling();
+        await Promise.resolve();
+        polling.enterActiveMode();
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(onStatusChange).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(onStatusChange).toHaveBeenCalledWith('running', 'stopped');
+        expect(optimistic.value).toBe(false);
+        expect(polling.isActive.value).toBe(false);
+        await vi.advanceTimersByTimeAsync(12000);
+        expect(fetchFn).toHaveBeenCalledTimes(4);
+        polling.stopPolling();
+    });
+
 });

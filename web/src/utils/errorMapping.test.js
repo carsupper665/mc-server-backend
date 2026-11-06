@@ -89,3 +89,12 @@ describe('errorMapping', () => {
         });
     });
 });
+
+it('handles structured backend errors and callback failures', () => {
+    expect(extractAndSanitizeError({ response: { data: { error: { message: 'panic: failed', type: 'panic' } } } })).toBe('伺服器發生嚴重錯誤，請聯絡管理員');
+    for (const code of ['invalid_callback', 'fgf_account_unavailable', 'session_failed']) {
+        expect(sanitizeErrorMessage(code)).not.toBe(code);
+    }
+    expect(sanitizeErrorMessage('Request id: xSbQ123')).toBe('Request id: xSbQ123');
+    expect(sanitizeErrorMessage('error sb failed')).toBe('發生未知的伺服器錯誤');
+});
