@@ -90,6 +90,11 @@ describe('errorMapping', () => {
     });
 });
 
+it('does not reveal whether an account exists', () => {
+    expect(sanitizeErrorMessage('User not found')).toBe('帳號或密碼錯誤');
+    expect(sanitizeErrorMessage('Invalid password')).toBe('帳號或密碼錯誤');
+});
+
 it('handles structured backend errors and callback failures', () => {
     expect(extractAndSanitizeError({ response: { data: { error: { message: 'panic: failed', type: 'panic' } } } })).toBe('伺服器發生嚴重錯誤，請聯絡管理員');
     for (const code of ['invalid_callback', 'fgf_account_unavailable', 'session_failed']) {

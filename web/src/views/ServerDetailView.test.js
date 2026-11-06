@@ -42,6 +42,18 @@ it('appends only new logs, resets replacements and skips hidden polls', async ()
     await state.fetchLogs();
     expect(api.get).not.toHaveBeenCalled();
 });
+it('unlocks the buttons when a started server never reports running', async () => {
+    api.get.mockImplementation(async url => url.includes('/status/') ? { status: 'stopped' } : {});
+    await flushPromises();
+    const state = wrapper.vm.$.setupState;
+    await state.fetchServerDetail();
+    api.post.mockResolvedValue({});
+    await state.handleStart();
+    await state.fetchServerDetail();
+    expect(state.actionsDisabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(state.actionsDisabled).toBe(false);
+});
 it('blocks duplicate actions and restores backend status on failed stop', async () => {
     await flushPromises();
     const state = wrapper.vm.$.setupState;

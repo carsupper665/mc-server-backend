@@ -71,7 +71,6 @@ const fetchServers = async () => {
         let status = 'Unknown';
         if (srv.install_status && srv.install_status !== 'completed') { return { ...srv, type, status: srv.install_status }; }
         try {
-            // Use POST as per backend controller definition
             const statusRes = await api.get(`/api/v1/server/status/${srv.server_id}`, { silent: true });
             // Check for status field in response
             if (statusRes && statusRes.status) {

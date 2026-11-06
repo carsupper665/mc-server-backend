@@ -202,7 +202,7 @@ body {
 
 /* 平板適配 */
 @media (min-width: 768px) and (max-width: 1024px) {
-  .n-card {
+  .n-card:not(.n-modal) {
     margin-bottom: 16px;
   }
 }
@@ -225,7 +225,7 @@ body {
     min-width: 44px !important;
   }
   
-  .n-card:hover {
+  .n-card:not(.n-modal):hover {
     transform: none;
   }
   

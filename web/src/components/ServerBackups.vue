@@ -48,6 +48,7 @@ const fetchBackups = async () => {
     backups.value = res && res.backups ? res.backups.map(b => ({ name: b })) : [];
   } catch (err) {
     backups.value = [];
+    message.error('無法載入備份列表: ' + getSanitizedErrorMessage(err));
   } finally {
     loading.value = false;
   }

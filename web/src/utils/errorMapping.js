@@ -5,6 +5,8 @@
 
 // 精確匹配對照表
 const exactErrorMappings = {
+    'user not found': '帳號或密碼錯誤',
+    'invalid password': '帳號或密碼錯誤',
     'invalid_callback': '登入回呼無效，請重新登入',
     'fgf_account_unavailable': 'FGF 帳號暫時無法使用，請稍後再試',
     'session_failed': '無法建立登入階段，請重新登入',

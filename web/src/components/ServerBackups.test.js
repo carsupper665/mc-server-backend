@@ -7,8 +7,8 @@ import api from '../api';
 
 const messages = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn(), success: vi.fn() }));
 vi.mock('naive-ui', async () => ({ ...await vi.importActual('naive-ui'), useMessage: () => messages }));
-vi.mock('../api', async () => ({ default: { post: vi.fn() }, getSanitizedErrorMessage: (await vi.importActual('../utils/errorMapping')).extractAndSanitizeError }));
-beforeEach(() => { vi.clearAllMocks(); api.post.mockResolvedValue({ backups: [] }); });
+vi.mock('../api', async () => ({ default: { get: vi.fn(), post: vi.fn() }, getSanitizedErrorMessage: (await vi.importActual('../utils/errorMapping')).extractAndSanitizeError }));
+beforeEach(() => { vi.clearAllMocks(); api.get.mockResolvedValue({ backups: [] }); api.post.mockResolvedValue({}); });
 afterEach(() => { vi.useRealTimers(); });
 
 it('aborts immediately on stop failure without creating a backup or claiming restart', async () => {

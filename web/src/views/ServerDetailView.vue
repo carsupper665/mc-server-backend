@@ -71,6 +71,7 @@ const fetchServerInfo = async () => {
     serverDetails.value = detail;
   } catch (err) {
     console.error('Failed to fetch server details:', err);
+    message.error('無法載入伺服器資訊: ' + getSanitizedErrorMessage(err));
   }
 };
 
@@ -90,6 +91,17 @@ const isOptimisticLoading = ref(false);
 const actionInFlight = ref(false);
 const actionsDisabled = computed(() => actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
 const optimisticAction = ref(null); // 'starting' | 'stopping' | null
+let optimisticTimer = null;
+const clearOptimistic = () => {
+  clearTimeout(optimisticTimer);
+  isOptimisticLoading.value = false;
+  optimisticAction.value = null;
+};
+// 伺服器可能一啟動就結束，狀態永遠不會變成預期值，逾時後要解除按鈕鎖定
+const armOptimisticTimeout = () => {
+  clearTimeout(optimisticTimer);
+  optimisticTimer = setTimeout(clearOptimistic, 30000);
+};
 
 // 整合智慧輪詢 - 稍後在 fetchServerDetail 定義後初始化
 let smartPolling = null;
@@ -114,8 +126,7 @@ const fetchServerDetail = async () => {
       server.value.status = status;
       if ((optimisticAction.value === 'starting' && status === 'running') ||
           (optimisticAction.value === 'stopping' && status === 'stopped')) {
-        isOptimisticLoading.value = false;
-        optimisticAction.value = null;
+        clearOptimistic();
       }
 
     } else {
@@ -164,6 +175,7 @@ const handleStart = async () => {
 
   try {
     await api.post(`/api/v1/server/start/${props.id}`, null, { silent: true });
+    armOptimisticTimeout();
     message.success('正在啟動伺服器...');
     // 記錄活動
     activityLog.logServerStart(props.id, displayName.value);
@@ -193,6 +205,7 @@ const handleStop = async () => {
 
   try {
     await api.post(`/api/v1/server/stop/${props.id}`, null, { silent: true });
+    armOptimisticTimeout();
     message.success('正在停止伺服器...');
     // 記錄活動
     activityLog.logServerStop(props.id, displayName.value);
@@ -291,7 +304,7 @@ const handleToggleMod = async (mod, nextValue) => {
   const prevValue = mod.enabled;
   mod.enabled = nextValue;
   try {
-    await api.get(`/api/v1/server/mod/toggle/${props.id}`, { silent: true,
+    await api.post(`/api/v1/server/mod/toggle/${props.id}`, null, { silent: true,
       params: { mod_id: mod.mod_id },
     });
     message.success(`${mod.name || mod.mod_id} 已${nextValue ? '啟用' : '停用'}`);
@@ -303,7 +316,7 @@ const handleToggleMod = async (mod, nextValue) => {
 
 const handleDeleteMod = async (mod) => {
   try {
-    await api.get(`/api/v1/server/mod/remove/${props.id}`, { silent: true,
+    await api.post(`/api/v1/server/mod/remove/${props.id}`, null, { silent: true,
       params: { mod_id: mod.mod_id },
     });
     mods.value = mods.value.filter(item => item.mod_id !== mod.mod_id);
@@ -317,7 +330,7 @@ const handleUpdateMod = async (mod) => {
   if (!mod?.mod_id || updatingMods.value[mod.mod_id]) return;
   updatingMods.value = { ...updatingMods.value, [mod.mod_id]: true };
   try {
-    await api.get(`/api/v1/server/mod/update/${props.id}`, { silent: true,
+    await api.post(`/api/v1/server/mod/update/${props.id}`, null, { silent: true,
       params: { mod_id: mod.mod_id },
       timeout: 600000,
     });
@@ -416,6 +429,7 @@ onMounted(() => {
   // 儲存 cleanup 引用
   onBeforeUnmount(() => {
     smartPolling?.stopPolling();
+    clearTimeout(optimisticTimer);
     clearInterval(logInterval);
   });
 });
