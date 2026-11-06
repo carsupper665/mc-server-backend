@@ -152,6 +152,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { parseProperties, serializeProperties } from '../utils/properties';
 import { NInput, NSelect, NSwitch, NInputNumber, NButton, NSpace, NText } from 'naive-ui';
 
 const props = defineProps({
@@ -203,57 +204,11 @@ const otherPropsCount = computed(() => {
 });
 
 /**
- * 解析 server.properties 格式
- */
-const parseProperties = (raw) => {
-  const lines = raw.split('\n');
-  const result = {};
-  const lineData = [];
-
-  lines.forEach((line, NameIndex) => {
-    const trimmed = line.trim();
-    
-    // 保留空行和註解
-    if (!trimmed || trimmed.startsWith('#')) {
-      lineData.push({ type: 'comment', value: line, NameIndex });
-      return;
-    }
-
-    // 解析 key=value
-    const eqIndex = line.indexOf('=');
-    if (eqIndex === -1) {
-      lineData.push({ type: 'comment', value: line, NameIndex });
-      return;
-    }
-
-    const key = line.substring(0, eqIndex).trim();
-    const value = line.substring(eqIndex + 1).trim();
-    
-    result[key] = value;
-    lineData.push({ type: 'property', key, value, NameIndex });
-  });
-
-  return { props: result, lines: lineData };
-};
-
-/**
- * 將解析後的屬性重新序列化為字串
- */
-const serializeProperties = () => {
-  return parsedLines.value.map(line => {
-    if (line.type === 'comment') {
-      return line.value;
-    }
-    return `${line.key}=${parsedProps.value[line.key] ?? line.value}`;
-  }).join('\n');
-};
-
-/**
  * 更新單一屬性
  */
 const updateProperty = (key, value) => {
   parsedProps.value[key] = value;
-  rawContent.value = serializeProperties();
+  rawContent.value = serializeProperties(parsedLines.value, parsedProps.value);
   emitUpdate();
 };
 

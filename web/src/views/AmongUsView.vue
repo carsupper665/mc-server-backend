@@ -27,24 +27,10 @@ const fetchRooms = async () => {
   try {
     const res = await api.get('/LOL-AmongUs/a/ls');
     
-    let roomList = [];
-    
-    // 後端回傳格式: { games: ["gameId1", "gameId2", ...] }
-    if (res?.games && Array.isArray(res.games)) {
-      roomList = res.games.map(gameId => ({
-        id: gameId,
-        name: `Room #${gameId.substring(0, 6)}...`
-      }));
-    } else if (Array.isArray(res)) {
-      roomList = res.map(item => {
-        if (typeof item === 'string') {
-          return { id: item, name: `Room #${item.substring(0, 6)}...` };
-        }
-        return { id: item.id || item.ID, ...item };
-      });
-    }
-    
-    rooms.value = roomList;
+    rooms.value = (res?.games || []).map(id => ({
+      id,
+      name: `Room #${id.substring(0, 6)}...`
+    }));
   } catch (err) {
     // 靜默處理錯誤
     rooms.value = [];
@@ -59,12 +45,7 @@ const fetchPlayers = async (roomId) => {
   try {
     const res = await api.get(`/LOL-AmongUs/a/ls-p/${roomId}`);
     
-    if (Array.isArray(res)) {
-      return res.map(p => typeof p === 'string' ? { id: p, name: p } : p);
-    } else if (res?.players && Array.isArray(res.players)) {
-      return res.players.map(p => typeof p === 'string' ? { id: p, name: p } : p);
-    }
-    return [];
+    return Array.isArray(res?.message) ? res.message.map(player => ({ ID: player.ID })) : [];
   } catch (err) {
     return [];
   }
@@ -72,7 +53,7 @@ const fetchPlayers = async (roomId) => {
 
 // 展開/收合房間
 const toggleRoom = async (room) => {
-  const id = getRoomId(room);
+  const id = room.id;
   if (!id || id === 'unknown') return;
   
   if (expandedRooms.value[id]) {
@@ -113,36 +94,6 @@ const endGame = async (roomId) => {
   } catch (err) {
     message.error('結束遊戲失敗');
   }
-};
-
-// 取得房間 ID
-const getRoomId = (room) => {
-  if (!room) return 'unknown';
-  if (room.id) return String(room.id);
-  if (room.ID) return String(room.ID);
-  if (room.game_id) return String(room.game_id);
-  if (room.GameId) return String(room.GameId);
-  return 'unknown';
-};
-
-// 取得房間名稱
-const getRoomName = (room) => {
-  if (!room) return 'Unknown Room';
-  if (room.name) return room.name;
-  if (room.Name) return room.Name;
-  const id = getRoomId(room);
-  return id !== 'unknown' ? `Room #${id.substring(0, 6)}...` : 'Unknown Room';
-};
-
-// 取得玩家數量
-const getPlayerCount = (room) => {
-  if (!room) return 0;
-  if (typeof room.player_count === 'number') return room.player_count;
-  if (typeof room.playerCount === 'number') return room.playerCount;
-  if (typeof room.PlayerCount === 'number') return room.PlayerCount;
-  if (Array.isArray(room.players)) return room.players.length;
-  if (Array.isArray(room.Players)) return room.Players.length;
-  return 0;
 };
 
 // 自動輪詢 - 30 秒間隔以避免 429 錯誤
@@ -212,10 +163,10 @@ onBeforeUnmount(() => {
       
       <!-- 房間卡片網格 -->
       <n-grid v-else cols="1 s:2 m:3" responsive="screen" :x-gap="20" :y-gap="20">
-        <n-grid-item v-for="room in rooms" :key="getRoomId(room)">
+        <n-grid-item v-for="room in rooms" :key="room.id">
           <n-card 
             class="room-card fade-in-up"
-            :class="{ 'room-expanded': expandedRooms[getRoomId(room)] }"
+            :class="{ 'room-expanded': expandedRooms[room.id] }"
             hoverable
           >
             <template #header>
@@ -223,35 +174,35 @@ onBeforeUnmount(() => {
                 <div class="room-avatar">
                   <n-icon size="20" color="#818cf8"><TeamOutlined /></n-icon>
                 </div>
-                <n-text strong class="room-name">{{ getRoomName(room) }}</n-text>
+                <n-text strong class="room-name">{{ room.name }}</n-text>
               </n-space>
             </template>
             
             <template #header-extra>
-              <n-tag type="info" size="small" round>
+              <n-tag v-if="expandedRooms[room.id] && !expandedRooms[room.id].loading" type="info" size="small" round>
                 <template #icon>
                   <n-icon><UserOutlined /></n-icon>
                 </template>
-                {{ getPlayerCount(room) }} 玩家
+                {{ expandedRooms[room.id].players.length }} 玩家
               </n-tag>
             </template>
             
             <div class="room-content">
-              <n-text depth="3" class="room-id">ID: {{ getRoomId(room) }}</n-text>
+              <n-text depth="3" class="room-id">ID: {{ room.id }}</n-text>
               
               <!-- 展開的玩家列表 -->
-              <div v-if="expandedRooms[getRoomId(room)]" class="players-section">
-                <n-spin v-if="expandedRooms[getRoomId(room)].loading" size="small" />
+              <div v-if="expandedRooms[room.id]" class="players-section">
+                <n-spin v-if="expandedRooms[room.id].loading" size="small" />
                 <template v-else>
                   <div 
-                    v-for="player in expandedRooms[getRoomId(room)].players" 
-                    :key="player.id || player.name"
+                    v-for="player in expandedRooms[room.id].players"
+                    :key="player.ID"
                     class="player-item"
                   >
                     <n-icon size="14"><UserOutlined /></n-icon>
-                    <n-text>{{ player.name || player.Name || player }}</n-text>
+                    <n-text>{{ player.ID }}</n-text>
                   </div>
-                  <n-text v-if="expandedRooms[getRoomId(room)].players.length === 0" depth="3">
+                  <n-text v-if="expandedRooms[room.id].players.length === 0" depth="3">
                     目前無玩家
                   </n-text>
                 </template>
@@ -265,13 +216,13 @@ onBeforeUnmount(() => {
                   quaternary
                   @click="toggleRoom(room)"
                 >
-                  {{ expandedRooms[getRoomId(room)] ? '收合' : '查看玩家' }}
+                  {{ expandedRooms[room.id] ? '收合' : '查看玩家' }}
                 </n-button>
                 <n-button 
                   size="small" 
                   type="error" 
                   ghost
-                  @click="endGame(getRoomId(room))"
+                  @click="endGame(room.id)"
                 >
                   <template #icon><n-icon><CloseCircleOutlined /></n-icon></template>
                   結束

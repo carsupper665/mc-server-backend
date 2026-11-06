@@ -26,10 +26,6 @@ export default defineConfig({
         target: Api,
         changeOrigin: true,
       },
-      '/server-api': {
-        target: Api,
-        changeOrigin: true,
-      },
       '/user': {
         target: Api,
         changeOrigin: true,

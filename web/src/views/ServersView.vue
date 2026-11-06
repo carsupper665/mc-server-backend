@@ -93,31 +93,6 @@ const fetchServers = async () => {
   }
 };
 
-const fetchVersions = async () => {
-  try {
-    let res = await api.get('/api/v1/public/vinfo');
-    
-    // Defensive check: if response is wrapped in { versions: ... } or { data: ... }
-    if (res.versions) res = res.versions;
-    if (res.data) res = res.data;
-
-    if (res && typeof res === 'object') {
-        // Filter out keys that don't look like version numbers (simple heuristic)
-        // detailed list keys are usually valid, but let's be safe against metadata keys
-        const keys = Object.keys(res).filter(k => k.match(/^[\d\w\.-]+$/));
-        
-        // If keys include typical versions, assume it's good
-        if (keys.length > 0) {
-             versions.value = keys.map(v => ({ label: v, value: v }));
-        } else {
-             console.warn('No version keys found in response', res);
-        }
-    }
-  } catch (err) {
-    console.error('Failed to fetch versions', err);
-  }
-};
-
 const handleCreate = async () => {
   if (!createForm.value.display_name) {
     message.warning('請輸入伺服器名稱');

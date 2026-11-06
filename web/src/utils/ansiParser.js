@@ -46,6 +46,7 @@ export function parseAnsiToHtml(text) {
 
     // ANSI Escape Code 正規表達式
     // 匹配 \x1b[...m 或 \033[...m 格式
+    // eslint-disable-next-line no-control-regex -- ANSI escape sequences require control characters
     const ansiRegex = /\x1b\[([0-9;]*)m/g;
 
     let result = '';
@@ -183,5 +184,6 @@ function escapeHtml(text) {
  */
 export function stripAnsi(text) {
     if (!text) return '';
+    // eslint-disable-next-line no-control-regex -- ANSI escape sequences require control characters
     return text.replace(/\x1b\[[0-9;]*m/g, '');
 }

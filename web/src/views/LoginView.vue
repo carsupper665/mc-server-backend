@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
   );
   background-size: 100% 4px, 3px 100%;
   pointer-events: none;
-  z-NameIndex: 10;
+  z-index: 10;
 }
 
 .login-card-wrap {
@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
   background: rgba(18, 16, 16, 0.05);
   pointer-events: none;
   animation: flicker 0.1s infinite;
-  z-NameIndex: 11;
+  z-index: 11;
 }
 
 /* 倒數計時器樣式 */
