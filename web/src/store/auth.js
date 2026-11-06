@@ -98,24 +98,6 @@ export const useAuthStore = defineStore('auth', {
                 this.loading = false;
             }
         },
-        async verifyCode(code) {
-            this.loading = true;
-            try {
-                const res = await api.withMeta.post('/Authentication/verify', { code }, {
-                    skipAuthToken: true
-                });
-                if (res.status < 200 || res.status >= 300) {
-                    throw new Error(`Unexpected verify status: ${res.status}`);
-                }
-                await this.fetchUser();
-                return {
-                    status: res.status,
-                    data: res.data
-                };
-            } finally {
-                this.loading = false;
-            }
-        },
         async exchangeCallbackToken(query) {
             this.loading = true;
             try {

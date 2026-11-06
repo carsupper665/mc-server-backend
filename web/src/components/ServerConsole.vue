@@ -64,7 +64,7 @@
       :bordered="false"
     >
       <template #header-extra>
-        <n-button size="small" secondary type="primary" tag="a" href="https://www.digminecraft.com/game_commands/NameIndex.php" target="_blank">
+        <n-button size="small" secondary type="primary" tag="a" href="https://www.digminecraft.com/game_commands/index.php" target="_blank">
           🌐 Online Wiki
         </n-button>
       </template>
@@ -374,7 +374,7 @@ const sendCommand = async () => {
   term.value.writeln(`\r\n> \x1b[1m${cmd}\x1b[0m`);
 
   try {
-    await api.post(`/api/v1/server/cmd/${props.serverId}`, {
+    await api.post(`/api/v1/server/command/${props.serverId}`, {
       command: cmd
     });
     // 成功不需特別提示，日誌會顯示結果

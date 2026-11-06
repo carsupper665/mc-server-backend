@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { readMRPack, buildMRPack, blockedPackPath, overrideText } from './mrpack';
@@ -19,7 +19,7 @@ const fixture = () => zipSync({
 });
 
 describe('mrpack local editing', () => {
-  it('reads the real pack without uploading it', async () => {
+  it.skipIf(!existsSync('../test/mrcpack/test_mod_pack.mrpack'))('reads the real pack without uploading it', async () => {
     const pack = await readMRPack(new Uint8Array(readFileSync('../test/mrcpack/test_mod_pack.mrpack')), config);
     expect(pack.index.name).toBe('EZRedstone');
     expect(pack.files).toHaveLength(92);
