@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
               <n-input 
                 v-model:value="loginForm.password" 
                 type="password" 
-                show-password-on="mousedown"
+                show-password-on="click"
                 placeholder="Password"
                 class="terminal-input"
               />
@@ -246,6 +246,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .login-container {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;

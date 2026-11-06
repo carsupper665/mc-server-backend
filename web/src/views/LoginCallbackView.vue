@@ -135,6 +135,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .callback-page {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;

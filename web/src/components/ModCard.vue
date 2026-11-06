@@ -163,7 +163,9 @@ const handleAdd = (event) => {
   filter: brightness(1.1);
 }
 
-.mod-card:hover .add-button {
+.mod-card:hover .add-button,
+.mod-card:focus-within .add-button,
+.add-button:focus-visible {
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
@@ -249,5 +251,12 @@ const handleAdd = (event) => {
     flex-direction: column;
     align-items: center;
   }
+}
+.mod-content { padding-top: 44px; }
+.mod-title, .mod-author { overflow-wrap: anywhere; }
+.add-button { width: 44px; height: 44px; }
+.add-button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+@media (hover: none) {
+  .add-button { opacity: 1; transform: scale(1); pointer-events: auto; }
 }
 </style>
