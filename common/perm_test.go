@@ -52,3 +52,31 @@ func TestPermForRoot(t *testing.T) {
 		t.Fatal("root is not limited by RolePerm")
 	}
 }
+
+func TestDefaultServerMemory(t *testing.T) {
+	guest, ok := PermFor(RoleGuestUser)
+	if !ok {
+		t.Fatal("guest permission missing")
+	}
+	xms, xmx := DefaultServerMemory(guest.ServerMaxMem, false)
+	if xmx != guest.ServerMaxMem {
+		t.Fatalf("guest xmx=%d, want %d", xmx, guest.ServerMaxMem)
+	}
+	if xms > xmx {
+		t.Fatalf("guest xms=%d > xmx=%d", xms, xmx)
+	}
+
+	member, ok := PermFor(RoleMemberUser)
+	if !ok {
+		t.Fatal("member permission missing")
+	}
+	xms, xmx = DefaultServerMemory(member.ServerMaxMem, false)
+	if xmx != 2*GB || xms != 1*GB {
+		t.Fatalf("member defaults xms=%d xmx=%d", xms, xmx)
+	}
+
+	xms, xmx = DefaultServerMemory(0, true)
+	if xmx != 2*GB || xms != 1*GB {
+		t.Fatalf("unlimited defaults xms=%d xmx=%d", xms, xmx)
+	}
+}

@@ -29,13 +29,13 @@ type UserMinecraftServer struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
-func AddServerToUser(userID uint, serverID, displayName, ver, modLoader, loaderVer string, systemPath string) error {
+func AddServerToUser(userID uint, serverID, displayName, ver, modLoader, loaderVer string, systemPath string, xms, xmx int64) error {
 	userServer := UserMinecraftServer{
 		OwnerID:       userID,
 		ServerID:      serverID,
 		DisplayName:   displayName,
-		Xms:           1024 * 1024 * 1024,
-		Xmx:           2 * 1024 * 1024 * 1024,
+		Xms:           xms,
+		Xmx:           xmx,
 		MCVersion:     ver,
 		ModLoader:     modLoader,
 		LoaderVersion: loaderVer,

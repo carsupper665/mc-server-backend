@@ -38,7 +38,7 @@ var modpackSessions = struct {
 }{items: map[string]*ModpackSession{}}
 
 // The archive file belongs to the session after this succeeds.
-func StartModpackInstall(owner uint, pack *MRPack, archive *os.File) (*ModpackSession, error) {
+func StartModpackInstall(owner uint, pack *MRPack, archive *os.File, xms, xmx int64) (*ModpackSession, error) {
 	loader, version, err := pack.Loader()
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func StartModpackInstall(owner uint, pack *MRPack, archive *os.File) (*ModpackSe
 	if err != nil {
 		return nil, err
 	}
-	if err := model.AddServerToUser(owner, serverID, pack.Name, pack.Dependencies["minecraft"], loader, version, workDir); err != nil {
+	if err := model.AddServerToUser(owner, serverID, pack.Name, pack.Dependencies["minecraft"], loader, version, workDir, xms, xmx); err != nil {
 		_ = ErrorFileClear(workDir)
 		return nil, err
 	}

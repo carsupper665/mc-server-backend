@@ -58,6 +58,19 @@ var RolePerm = map[int]Permission{
 	},
 }
 
+// DefaultServerMemory returns create-time Xms/Xmx, capped by ServerMaxMem unless unlimited.
+func DefaultServerMemory(maxMem int64, unlimited bool) (xms, xmx int64) {
+	xmx = 2 * GB
+	xms = 1 * GB
+	if !unlimited && xmx > maxMem {
+		xmx = maxMem
+	}
+	if xms > xmx {
+		xms = xmx
+	}
+	return xms, xmx
+}
+
 func IsRoot(role int) bool {
 	return role == RoleRootUser
 }

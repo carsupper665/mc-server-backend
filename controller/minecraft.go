@@ -37,6 +37,12 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
+	xms, xmx, status, body := defaultMemoryForUser(uid_uint)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+
 	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
 		common.LogError(c.Request.Context(), "CreateMinecraftServer error: "+err.Error())
@@ -46,7 +52,7 @@ func CreateServer(c *gin.Context) {
 
 	sysPath := common.MinecraftServerPath + "/" + serverID
 	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, req.ServerVer,
-		req.ServerType, req.FabricLoader, sysPath)
+		req.ServerType, req.FabricLoader, sysPath, xms, xmx)
 
 	if modelErr != nil {
 		common.LogError(c.Request.Context(), "AddServerToUser error: "+modelErr.Error())
@@ -173,6 +179,32 @@ func onlineLimitResponse(uid uint, onlineCount int) (status int, body gin.H, blo
 		return http.StatusForbidden, gin.H{
 			"error": "已達同時運行上限",
 			"code":  "PERM_ONLINE_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func defaultMemoryForUser(uid uint) (xms, xmx int64, status int, body gin.H) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return 0, 0, status, body
+	}
+	xms, xmx = common.DefaultServerMemory(perm.ServerMaxMem, isRoot)
+	return xms, xmx, 0, nil
+}
+
+func memoryLimitResponse(uid uint, xmx int64) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if xmx > perm.ServerMaxMem {
+		return http.StatusForbidden, gin.H{
+			"error": "記憶體設定超過上限，請調小記憶體",
+			"code":  "PERM_MEMORY_LIMIT",
 		}, true
 	}
 	return 0, nil, false
@@ -458,6 +490,10 @@ func (sc *ServerController) Start(c *gin.Context) {
 	}
 	if xmsBytes > xmxBytes {
 		c.JSON(400, gin.H{"error": "Xms cannot be greater than Xmx"})
+		return
+	}
+	if status, body, blocked := memoryLimitResponse(uintID, xmxBytes); blocked {
+		c.JSON(status, body)
 		return
 	}
 

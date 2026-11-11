@@ -33,6 +33,11 @@ func ImportModpack(c *gin.Context) {
 		c.JSON(status, body)
 		return
 	}
+	xms, xmx, status, body := defaultMemoryForUser(owner)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.MRPackLimit())
 	file, err := os.CreateTemp("", "mrpack-*.mrpack")
 	if err != nil {
@@ -66,7 +71,7 @@ func ImportModpack(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Mod Pack Parse Error", "request_id": reqId})
 		return
 	}
-	session, err := service.StartModpackInstall(owner, pack, file)
+	session, err := service.StartModpackInstall(owner, pack, file, xms, xmx)
 	if err != nil {
 		logger.Errorf("Fail to Start Mod Pack Install Error: %v, req_id: %v", err, reqId)
 		c.JSON(400, gin.H{"error": "Start Install Error", "request_id": reqId})
