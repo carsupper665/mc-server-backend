@@ -195,16 +195,22 @@ func AddUser(userName, userEmail, displayName, password string, role int) error 
 	if err != nil {
 		return err
 	}
-	err = DB.Create(&User{
+	user := User{
 		Username:    userName,
 		Email:       userEmail,
 		DisplayName: displayName,
 		Password:    h,
 		Salt:        salt,
 		Role:        role,
-	}).Error
-
-	return err
+	}
+	if err = DB.Create(&user).Error; err != nil {
+		return err
+	}
+	// GORM replaces zero Role with default:1 on Create; force the intended value.
+	if user.Role != role {
+		return DB.Model(&user).UpdateColumn("role", role).Error
+	}
+	return nil
 }
 
 func GetRole(userID uint) (int, error) {

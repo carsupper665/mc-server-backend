@@ -66,3 +66,14 @@ func PermFor(role int) (Permission, bool) {
 	perm, ok := RolePerm[role]
 	return perm, ok
 }
+
+func IsAssignableRole(role int) bool {
+	if role == RoleExternalMemberUser {
+		return false
+	}
+	if IsRoot(role) {
+		return true
+	}
+	_, ok := PermFor(role)
+	return ok
+}
