@@ -63,6 +63,12 @@ func NewServer(sid, oid, workDir, maxMem, minMem string, portStr string, callbac
 	}
 }
 
+// SplitJVMArgs splits stored JVM args by whitespace (strings.Fields).
+// Quotes are not special and remain part of the token.
+func SplitJVMArgs(args string) []string {
+	return strings.Fields(args)
+}
+
 func (s *Server) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -73,10 +79,9 @@ func (s *Server) Start() error {
 	cmdArgs := []string{
 		"-Xms" + s.minMem,
 		"-Xmx" + s.maxMem,
-		"-jar", "server.jar",
-		"--port", s.port,
 	}
 	cmdArgs = append(cmdArgs, s.args...)
+	cmdArgs = append(cmdArgs, "-jar", "server.jar", "--port", s.port)
 	common.Logger.Debugf("Starting server with args: %v", cmdArgs)
 	cmd := exec.CommandContext(context.Background(), "java", cmdArgs...)
 	cmd.Dir = s.workDir

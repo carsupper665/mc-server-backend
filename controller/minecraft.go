@@ -578,7 +578,7 @@ func (sc *ServerController) Start(c *gin.Context) {
 
 	xmxArg := fmt.Sprintf("%dM", xmxBytes/common.MB)
 	xmsArg := fmt.Sprintf("%dM", xmsBytes/common.MB)
-	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, []string{})
+	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, service.SplitJVMArgs(serverInfo.Args))
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, StartServer error: "+err.Error())
 		status, body := startFailureResponse(err)

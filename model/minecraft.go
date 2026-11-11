@@ -12,7 +12,7 @@ type UserMinecraftServer struct {
 	OwnerID     uint   `gorm:"primaryKey;not null" json:"owner_id"`
 	DisplayName string `gorm:"size:100;not null" json:"display_name"`
 	ServerID    string `gorm:"primaryKey;size:32;not null" json:"server_id"`
-	Args        string `gorm:"size:100;default:''" json:"args"`
+	Args        string `gorm:"size:1000;default:''" json:"args"`
 	Xms         int64  `gorm:"default:1073741824" json:"xms"` //minMemBytes
 	Xmx         int64  `gorm:"default:2147483648" json:"xmx"` //maxMemBytes
 
