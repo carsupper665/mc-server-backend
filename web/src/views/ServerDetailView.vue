@@ -28,6 +28,7 @@ import MacroPanel from '../components/MacroPanel.vue';
 import ServerBackups from '../components/ServerBackups.vue';
 import ServerConsole from '../components/ServerConsole.vue';
 import { useActivityLogStore } from '../store/activityLog';
+import { useAuthStore } from '../store/auth';
 
 // Macro 狀態
 const macroStatus = ref(null);
@@ -44,6 +45,8 @@ const props = defineProps({
 
 const message = useMessage();
 const activityLog = useActivityLogStore();
+const authStore = useAuthStore();
+const isRoot = computed(() => authStore.isAdmin);
 
 // 初始化活動紀錄 Store
 activityLog.init();
@@ -74,10 +77,16 @@ const formatMemBytes = bytes => {
 const memoryXmx = ref('');
 const memoryXms = ref('');
 const memorySaving = ref(false);
+const jvmArgs = ref('');
+const jvmArgsSaving = ref(false);
 
 const syncMemoryInputs = detail => {
   memoryXmx.value = formatMemBytes(detail?.xmx);
   memoryXms.value = formatMemBytes(detail?.xms);
+};
+
+const syncJvmArgsInput = detail => {
+  jvmArgs.value = detail?.args ?? '';
 };
 
 const saveMemory = async () => {
@@ -101,6 +110,19 @@ const saveMemory = async () => {
   }
 };
 
+const saveJvmArgs = async () => {
+  jvmArgsSaving.value = true;
+  try {
+    await api.post(`/api/v1/server/args/${props.id}`, { args: jvmArgs.value }, { silent: true });
+    message.success('JVM 參數已更新，下次啟動生效');
+    await fetchServerInfo();
+  } catch (err) {
+    message.error('調整 JVM 參數失敗: ' + getSanitizedErrorMessage(err));
+  } finally {
+    jvmArgsSaving.value = false;
+  }
+};
+
 const fetchServerInfo = async () => {
   try {
     const res = await api.get(`/api/v1/server/details/${props.id}`, { silent: true });
@@ -110,6 +132,7 @@ const fetchServerInfo = async () => {
     }
     serverDetails.value = detail;
     syncMemoryInputs(detail);
+    syncJvmArgsInput(detail);
   } catch (err) {
     console.error('Failed to fetch server details:', err);
     message.error('無法載入伺服器資訊: ' + getSanitizedErrorMessage(err));
@@ -548,6 +571,22 @@ onMounted(() => {
                 </div>
                 <n-button type="primary" size="small" :loading="memorySaving" @click="saveMemory">
                   儲存記憶體
+                </n-button>
+              </n-space>
+            </n-card>
+
+            <n-card v-if="isRoot" title="JVM ARGS" class="info-card fade-in-up" style="animation-delay: 0.25s">
+              <n-space vertical>
+                <n-text depth="3">下次啟動生效</n-text>
+                <n-input
+                  v-model:value="jvmArgs"
+                  type="textarea"
+                  size="small"
+                  placeholder="例如 -XX:+UseG1GC"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                />
+                <n-button type="primary" size="small" :loading="jvmArgsSaving" @click="saveJvmArgs">
+                  儲存 JVM 參數
                 </n-button>
               </n-space>
             </n-card>

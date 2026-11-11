@@ -101,3 +101,16 @@ func EditServerMemory(id uint, serverId string, xmx int64, xms *int64) error {
 	}
 	return nil
 }
+
+func EditServerArgs(id uint, serverId string, args string) error {
+	result := DB.Model(&UserMinecraftServer{}).
+		Where("owner_id = ? AND server_id = ?", id, serverId).
+		Update("args", args)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}

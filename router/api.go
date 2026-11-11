@@ -70,6 +70,7 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.GET("/log/:server_id", c.GetServerLog)
 		serverApi.GET("/details/:server_id", controller.ServerDetails)
 		serverApi.POST("/memory/:server_id", controller.EditServerMemory)
+		serverApi.POST("/args/:server_id", controller.EditServerArgs)
 
 	}
 	serverMod := serverApi.Group("/mod")

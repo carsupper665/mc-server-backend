@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -188,6 +189,54 @@ func EditServerMemory(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"message": "記憶體設定已更新，下次啟動生效"})
+}
+
+func EditServerArgs(c *gin.Context) {
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uid, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req struct {
+		Args string `json:"args"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "請求格式錯誤"})
+		return
+	}
+
+	if utf8.RuneCountInString(req.Args) > 1000 {
+		c.JSON(400, gin.H{"error": "JVM 參數不能超過 1000 字"})
+		return
+	}
+
+	_, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+	if !isRoot {
+		c.JSON(http.StatusForbidden, gin.H{"error": "只有 Root 可以修改 JVM 參數", "code": "PERM_EDIT_ARGS"})
+		return
+	}
+
+	if err := model.EditServerArgs(uid, sid, req.Args); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "無法更新 JVM 參數"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "JVM 參數已更新，下次啟動生效"})
 }
 
 func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {

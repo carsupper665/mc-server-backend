@@ -14,7 +14,7 @@ import (
 	"go-backend/model"
 )
 
-func postMemoryJSON(r http.Handler, path string, uid uint, body any) *httptest.ResponseRecorder {
+func postJSONAs(r http.Handler, path string, uid uint, body any) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(body)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
@@ -24,7 +24,7 @@ func postMemoryJSON(r http.Handler, path string, uid uint, body any) *httptest.R
 	return w
 }
 
-func memoryEditRouter(t *testing.T) *gin.Engine {
+func testUIDRouter(t *testing.T, path string, h gin.HandlerFunc) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -39,7 +39,7 @@ func memoryEditRouter(t *testing.T) *gin.Engine {
 		c.Set("stringId", fmt.Sprintf("%d", uid))
 		c.Set("payload", map[string]any{})
 	})
-	r.POST("/memory/:server_id", EditServerMemory)
+	r.POST(path, h)
 	return r
 }
 
@@ -58,9 +58,9 @@ func TestEditServerMemoryAPIOmitsXms(t *testing.T) {
 	setupCreateLimitDB(t)
 	user := createLimitUser(t, common.RoleMemberUser)
 	seedOwnedServer(t, user.ID, "s1", 1*common.GB, 2*common.GB)
-	r := memoryEditRouter(t)
+	r := testUIDRouter(t, "/memory/:server_id", EditServerMemory)
 
-	w := postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": "3G"})
+	w := postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": "3G"})
 	if w.Code != 200 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -78,7 +78,7 @@ func TestEditServerMemoryAPIOmitsXms(t *testing.T) {
 		t.Fatalf("body=%s", w.Body.String())
 	}
 
-	w = postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": "3G", "xms": "512M"})
+	w = postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": "3G", "xms": "512M"})
 	if w.Code != 200 {
 		t.Fatalf("with xms: status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -95,9 +95,9 @@ func TestEditServerMemoryAPIRejectsZeroXmx(t *testing.T) {
 	setupCreateLimitDB(t)
 	user := createLimitUser(t, common.RoleMemberUser)
 	seedOwnedServer(t, user.ID, "s1", 1*common.GB, 2*common.GB)
-	r := memoryEditRouter(t)
+	r := testUIDRouter(t, "/memory/:server_id", EditServerMemory)
 
-	w := postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": "0"})
+	w := postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": "0"})
 	if w.Code != 400 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -110,15 +110,15 @@ func TestEditServerMemoryAPIRejectsXmsGreaterThanXmx(t *testing.T) {
 	setupCreateLimitDB(t)
 	user := createLimitUser(t, common.RoleMemberUser)
 	seedOwnedServer(t, user.ID, "s1", 1*common.GB, 2*common.GB)
-	r := memoryEditRouter(t)
+	r := testUIDRouter(t, "/memory/:server_id", EditServerMemory)
 
-	w := postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": "1G", "xms": "2G"})
+	w := postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": "1G", "xms": "2G"})
 	if w.Code != 400 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 
 	// omitted xms: existing Xms > new Xmx
-	w = postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": "512M"})
+	w = postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": "512M"})
 	if w.Code != 400 {
 		t.Fatalf("omit xms over new xmx: status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -133,10 +133,10 @@ func TestEditServerMemoryAPIMemoryLimitAndOwnership(t *testing.T) {
 		t.Fatal("guest permission missing")
 	}
 	seedOwnedServer(t, user.ID, "s1", 256*common.MB, 512*common.MB)
-	r := memoryEditRouter(t)
+	r := testUIDRouter(t, "/memory/:server_id", EditServerMemory)
 
 	over := fmt.Sprintf("%dM", perm.ServerMaxMem/common.MB+1)
-	w := postMemoryJSON(r, "/memory/s1", user.ID, map[string]any{"xmx": over})
+	w := postJSONAs(r, "/memory/s1", user.ID, map[string]any{"xmx": over})
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("over limit: status=%d body=%s", w.Code, w.Body.String())
 	}
@@ -148,7 +148,7 @@ func TestEditServerMemoryAPIMemoryLimitAndOwnership(t *testing.T) {
 		t.Fatalf("code=%v", body["code"])
 	}
 
-	w = postMemoryJSON(r, "/memory/s1", other.ID, map[string]any{"xmx": "512M"})
+	w = postJSONAs(r, "/memory/s1", other.ID, map[string]any{"xmx": "512M"})
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("other owner: status=%d body=%s", w.Code, w.Body.String())
 	}
