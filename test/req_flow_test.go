@@ -19,6 +19,16 @@ func requestFixture(t *testing.T) func(string, string, any) (int, []byte) {
 	t.Helper()
 	r := setupTestRouter(t)
 	router.SetUserRouter(r)
+	if err := model.DB.AutoMigrate(&model.User{}); err != nil {
+		t.Fatal(err)
+	}
+	user := model.User{
+		ID: 1, Username: "flow1", DisplayName: "Flow", Email: "flow1@example.test",
+		Password: "h", Salt: "s", Role: common.RoleMemberUser,
+	}
+	if err := model.DB.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(setupMockModrinth(t, "ver-123", "1.2.3", "mod.jar", "fabric", "1.20.1"))
 	server := httptest.NewServer(r)
 	t.Cleanup(server.Close)

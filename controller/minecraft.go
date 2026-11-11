@@ -26,6 +26,15 @@ func CreateServer(c *gin.Context) {
 	}
 
 	_, uid_str, uid_uint, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if status, body, blocked := createServerLimitResponse(uid_uint); blocked {
+		c.JSON(status, body)
+		return
+	}
 
 	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
@@ -110,6 +119,34 @@ func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
 	uid := c.MustGet("uintId").(uint)
 
 	return payload, rawUID, uid, nil
+}
+
+func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) {
+	role, err := model.GetRole(uid)
+	if err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+	}
+	if common.IsRoot(role) {
+		return 0, nil, false
+	}
+	perm, ok := common.PermFor(role)
+	if !ok {
+		return http.StatusForbidden, gin.H{"error": "角色未定義", "code": "PERM_ROLE_UNDEFINED"}, true
+	}
+	if !perm.CanCreateServer {
+		return http.StatusForbidden, gin.H{"error": "沒有建立伺服器的權限"}, true
+	}
+	count, err := model.GetServerCount(uid)
+	if err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+	}
+	if count >= perm.MaxServerCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達伺服器數量上限",
+			"code":  "PERM_SERVER_LIMIT",
+		}, true
+	}
+	return 0, nil, false
 }
 
 // --------------------Server Controller--------------------

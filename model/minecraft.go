@@ -73,3 +73,12 @@ func GetServerByID(userID uint, serverID string) (*UserMinecraftServer, error) {
 	}
 	return &server, nil
 }
+
+func GetServerCount(ownerID uint) (int64, error) {
+	var count int64
+	err := DB.Model(&UserMinecraftServer{}).Where("owner_id = ?", ownerID).Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
