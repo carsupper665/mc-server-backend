@@ -329,6 +329,29 @@ func memoryLimitResponse(uid uint, xmx int64) (status int, body gin.H, blocked b
 	return 0, nil, false
 }
 
+func modLimitResponse(uid uint, serverID string) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	count, err := model.GetModCount(serverID)
+	if err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+	}
+	// Async installs return before server_mods is written.
+	count += int64(service.CountPendingInstallJobs(serverID))
+	if count >= perm.MaxModsCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達 mod 數量上限",
+			"code":  "PERM_MOD_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
 func startFailureResponse(err error) (status int, body gin.H) {
 	switch {
 	case errors.Is(err, service.ErrAlreadyRunning):
@@ -890,6 +913,10 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 	}
 	if err := model.IsOwner(userId, sid); err != nil {
 		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+	if status, body, blocked := modLimitResponse(userId, sid); blocked {
+		c.JSON(status, body)
 		return
 	}
 

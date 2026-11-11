@@ -619,6 +619,12 @@ func AddModToServer(sid, modID, versionID, filename string, autoUpdate bool) err
 	})
 }
 
+func GetModCount(serverID string) (int64, error) {
+	var count int64
+	err := DB.Model(&ServerMod{}).Where("server_id = ?", serverID).Count(&count).Error
+	return count, err
+}
+
 func ModExists(sid, modID string) (bool, error) {
 	var n int64
 	err := DB.Model(&ServerMod{}).
