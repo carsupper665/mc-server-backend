@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"go-backend/common"
 	"go-backend/model"
 	"net/http"
 	"os"
@@ -10,6 +11,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// localRoleFromFGF maps FGF roles onto local ones: 3/4/5 become External Member;
+// 0/1/2/6 are used as-is.
+func localRoleFromFGF(role int) int {
+	switch role {
+	case 3, 4, 5:
+		return common.RoleExternalMemberUser
+	default:
+		return role
+	}
+}
 
 func fgfConfig() fgfoidc.Config { return fgfoidc.FromEnv(os.Getenv, "mc_fgf_flow") }
 func FGFLogin(c *gin.Context) {
@@ -51,14 +63,15 @@ func FGFCallback(c *gin.Context) {
 // linked to it, else the account with the same email (linked now), else a new
 // one. Display name and role always follow the IdP.
 func fgfUser(key string, identity fgfoidc.Identity) (model.User, error) {
+	role := localRoleFromFGF(identity.Role)
 	var user model.User
 	err := model.DB.Where("fgf_subject = ?", key).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = model.DB.Where("email = ?", identity.Email).First(&user).Error
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		user = model.User{Username: "f_" + key[:10], DisplayName: identity.Name, Email: identity.Email, Role: identity.Role, Password: "!", Salt: "oidc", FGFSubject: &key}
-		if err = model.DB.Create(&user).Error; err != nil {
+		user = model.User{Username: "f_" + key[:10], DisplayName: identity.Name, Email: identity.Email, Role: role, Password: "!", Salt: "oidc", FGFSubject: &key}
+		if err = model.CreateUser(&user); err != nil {
 			// A concurrent callback may have created this exact identity already.
 			err = model.DB.Where("fgf_subject = ?", key).First(&user).Error
 		}
@@ -74,8 +87,8 @@ func fgfUser(key string, identity fgfoidc.Identity) (model.User, error) {
 	if user.DisplayName != identity.Name {
 		updates["display_name"] = identity.Name
 	}
-	if user.Role != identity.Role {
-		updates["role"] = identity.Role
+	if user.Role != role {
+		updates["role"] = role
 	}
 	if len(updates) == 0 {
 		return user, nil
@@ -83,6 +96,6 @@ func fgfUser(key string, identity fgfoidc.Identity) (model.User, error) {
 	if err := model.DB.Model(&user).Updates(updates).Error; err != nil {
 		return user, err
 	}
-	user.FGFSubject, user.DisplayName, user.Role = &key, identity.Name, identity.Role
+	user.FGFSubject, user.DisplayName, user.Role = &key, identity.Name, role
 	return user, nil
 }

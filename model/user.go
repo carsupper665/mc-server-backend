@@ -188,6 +188,22 @@ func GetUserByName(username string) (User, error) {
 	return user, nil
 }
 
+// CreateUser inserts u. GORM replaces zero Role with default:1 on Create;
+// if that happens, the intended Role is written back with UpdateColumn.
+func CreateUser(u *User) error {
+	role := u.Role
+	if err := DB.Create(u).Error; err != nil {
+		return err
+	}
+	if u.Role != role {
+		if err := DB.Model(u).UpdateColumn("role", role).Error; err != nil {
+			return err
+		}
+		u.Role = role
+	}
+	return nil
+}
+
 // untested methods
 func AddUser(userName, userEmail, displayName, password string, role int) error {
 	salt := common.GetRandomString(16)
@@ -203,14 +219,7 @@ func AddUser(userName, userEmail, displayName, password string, role int) error 
 		Salt:        salt,
 		Role:        role,
 	}
-	if err = DB.Create(&user).Error; err != nil {
-		return err
-	}
-	// GORM replaces zero Role with default:1 on Create; force the intended value.
-	if user.Role != role {
-		return DB.Model(&user).UpdateColumn("role", role).Error
-	}
-	return nil
+	return CreateUser(&user)
 }
 
 func GetRole(userID uint) (int, error) {

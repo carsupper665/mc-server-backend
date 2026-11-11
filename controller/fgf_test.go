@@ -2,12 +2,32 @@ package controller
 
 import (
 	"github.com/glebarez/sqlite"
+	"go-backend/common"
 	"go-backend/model"
 	"gorm.io/gorm"
 	"testing"
 
 	fgfoidc "github.com/carsupper665/Frog-Grid-Forge/fgf-oidc"
 )
+
+func TestLocalRoleFromFGF(t *testing.T) {
+	cases := []struct {
+		fgf, want int
+	}{
+		{0, common.RoleGuestUser},
+		{1, common.RoleMemberUser},
+		{2, common.RoleVipMemberUser},
+		{3, common.RoleExternalMemberUser},
+		{4, common.RoleExternalMemberUser},
+		{5, common.RoleExternalMemberUser},
+		{6, common.RoleRootUser},
+	}
+	for _, tc := range cases {
+		if got := localRoleFromFGF(tc.fgf); got != tc.want {
+			t.Fatalf("localRoleFromFGF(%d) = %d, want %d", tc.fgf, got, tc.want)
+		}
+	}
+}
 
 func TestFGFUserLinksByEmailAndFollowsIdPRole(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -45,15 +65,28 @@ func TestFGFUserLinksByEmailAndFollowsIdPRole(t *testing.T) {
 		t.Fatalf("link not persisted: %+v, %v", stored, err)
 	}
 
-	// An unknown email creates a new account at the IdP role.
+	// FGF roles 3/4/5 sync onto External Member for linked accounts too.
+	user, err = fgfUser(key, fgfoidc.Identity{Subject: "1", Email: "operator@example.test", Name: "Root User", Role: 5})
+	if err != nil || user.Role != common.RoleExternalMemberUser {
+		t.Fatalf("mapped role not synced: %+v, %v", user, err)
+	}
+
+	// An unknown email creates a new account; FGF role 4 becomes External Member.
 	other := fgfoidc.Config{Issuer: "https://idp.example.test"}.IdentityKey("2")
 	user, err = fgfUser(other, fgfoidc.Identity{Subject: "2", Email: "new@example.test", Name: "New", Role: 4})
-	if err != nil || user.ID == local.ID || user.Role != 4 || user.Username != "f_"+other[:10] || user.Password != "!" {
+	if err != nil || user.ID == local.ID || user.Role != common.RoleExternalMemberUser || user.Username != "f_"+other[:10] || user.Password != "!" {
 		t.Fatalf("new account not created: %+v, %v", user, err)
 	}
 	var count int64
 	db.Model(&model.User{}).Count(&count)
 	if count != 2 {
 		t.Fatalf("expected 2 users, got %d", count)
+	}
+
+	// FGF role 0 on a new account must stay Guest (not replaced by GORM default:1).
+	guestKey := fgfoidc.Config{Issuer: "https://idp.example.test"}.IdentityKey("3")
+	user, err = fgfUser(guestKey, fgfoidc.Identity{Subject: "3", Email: "guest@example.test", Name: "Guest", Role: 0})
+	if err != nil || user.Role != common.RoleGuestUser {
+		t.Fatalf("new account role 0 not preserved: %+v, %v", user, err)
 	}
 }
