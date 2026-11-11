@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func CreateServer(c *gin.Context) {
@@ -121,17 +122,28 @@ func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
 	return payload, rawUID, uid, nil
 }
 
-func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) {
+func userPermission(uid uint) (perm common.Permission, isRoot bool, status int, body gin.H) {
 	role, err := model.GetRole(uid)
 	if err != nil {
-		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+		return common.Permission{}, false, http.StatusInternalServerError, gin.H{"error": "Internal server error"}
 	}
 	if common.IsRoot(role) {
-		return 0, nil, false
+		return common.Permission{}, true, 0, nil
 	}
 	perm, ok := common.PermFor(role)
 	if !ok {
-		return http.StatusForbidden, gin.H{"error": "角色未定義", "code": "PERM_ROLE_UNDEFINED"}, true
+		return common.Permission{}, false, http.StatusForbidden, gin.H{"error": "角色未定義", "code": "PERM_ROLE_UNDEFINED"}
+	}
+	return perm, false, 0, nil
+}
+
+func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
 	}
 	if !perm.CanCreateServer {
 		return http.StatusForbidden, gin.H{"error": "沒有建立伺服器的權限"}, true
@@ -147,6 +159,34 @@ func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) 
 		}, true
 	}
 	return 0, nil, false
+}
+
+func onlineLimitResponse(uid uint, onlineCount int) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if int64(onlineCount) >= perm.MaxOnlineCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達同時運行上限",
+			"code":  "PERM_ONLINE_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func startFailureResponse(err error) (status int, body gin.H) {
+	switch {
+	case errors.Is(err, service.ErrAlreadyRunning):
+		return http.StatusConflict, gin.H{"error": err.Error()}
+	case errors.Is(err, service.ErrNotFound):
+		return http.StatusNotFound, gin.H{"error": err.Error()}
+	default:
+		return http.StatusInternalServerError, gin.H{"error": "Failed to start server"}
+	}
 }
 
 // --------------------Server Controller--------------------
@@ -388,6 +428,10 @@ func (sc *ServerController) Start(c *gin.Context) {
 	serverInfo, err := model.GetServerByID(uintID, sid)
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
 		c.JSON(500, gin.H{"error": "Server start Failed."})
 		return
 	}
@@ -417,15 +461,25 @@ func (sc *ServerController) Start(c *gin.Context) {
 		return
 	}
 
+	if st, _ := sc.svc.Status(sid); st == "running" {
+		c.JSON(http.StatusConflict, gin.H{"error": service.ErrAlreadyRunning.Error()})
+		return
+	}
+	if status, body, blocked := onlineLimitResponse(uintID, sc.svc.OwnerCount(oid)); blocked {
+		c.JSON(status, body)
+		return
+	}
+
 	xmxArg := fmt.Sprintf("%dM", xmxBytes/common.MB)
 	xmsArg := fmt.Sprintf("%dM", xmsBytes/common.MB)
 	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, []string{})
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, StartServer error: "+err.Error())
-		if !errors.Is(err, service.ErrAlreadyRunning) && !errors.Is(err, service.ErrNotFound) && !errors.Is(err, service.ErrMaxReached) {
+		status, body := startFailureResponse(err)
+		if status >= 500 {
 			common.LogError(c.Request.Context(), "Log, StartServer error: "+err.Error())
 		}
-		c.JSON(500, gin.H{"error": "Failed to start server"})
+		c.JSON(status, body)
 		return
 	}
 	c.JSON(200, gin.H{"message": "Server started successfully", "server_id": srv.ID})
