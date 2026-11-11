@@ -120,6 +120,76 @@ func ServerDetails(c *gin.Context) {
 	c.JSON(200, gin.H{"server": server})
 }
 
+func EditServerMemory(c *gin.Context) {
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uid, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req struct {
+		Xmx string  `json:"xmx" binding:"required"`
+		Xms *string `json:"xms"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "請求格式錯誤"})
+		return
+	}
+
+	xmx, err := parseMemBytes(req.Xmx)
+	if err != nil || xmx <= 0 {
+		c.JSON(400, gin.H{"error": "Xmx 格式無效"})
+		return
+	}
+
+	var xmsPtr *int64
+	if req.Xms != nil {
+		parsed, err := parseMemBytes(*req.Xms)
+		if err != nil {
+			c.JSON(400, gin.H{"error": "Xms 格式無效"})
+			return
+		}
+		xmsPtr = &parsed
+	}
+
+	server, err := model.GetServerByID(uid, sid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	effectiveXms := server.Xms
+	if xmsPtr != nil {
+		effectiveXms = *xmsPtr
+	}
+	if effectiveXms > xmx {
+		c.JSON(400, gin.H{"error": "Xms 不能大於 Xmx"})
+		return
+	}
+
+	if status, body, blocked := memoryLimitResponse(uid, xmx); blocked {
+		c.JSON(status, body)
+		return
+	}
+
+	if err := model.EditServerMemory(uid, sid, xmx, xmsPtr); err != nil {
+		c.JSON(500, gin.H{"error": "無法更新記憶體設定"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "記憶體設定已更新，下次啟動生效"})
+}
+
 func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
 	payload := c.MustGet("payload").(map[string]any)
 	rawUID := c.MustGet("stringId").(string)

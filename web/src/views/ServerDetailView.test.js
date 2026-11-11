@@ -70,3 +70,31 @@ it('blocks duplicate actions and restores backend status on failed stop', async 
     expect(state.actionsDisabled).toBe(false);
     expect(messages.error).toHaveBeenCalledTimes(1);
 });
+
+it('loads memory inputs and saves xmx without empty xms', async () => {
+    const gb = 1024 * 1024 * 1024;
+    api.get.mockImplementation(async url => {
+        if (url.includes('/status/')) return { status: 'stopped' };
+        if (url.includes('/details/')) {
+            return { server: { server_id: 'test', display_name: 'n', mod_loader: 'Vanilla', xmx: 2 * gb, xms: 1 * gb } };
+        }
+        return {};
+    });
+    wrapper.unmount();
+    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [createPinia()] } });
+    await flushPromises();
+
+    const state = wrapper.vm.$.setupState;
+    expect(state.memoryXmx).toBe('2G');
+    expect(state.memoryXms).toBe('1G');
+
+    state.memoryXms = '';
+    api.post.mockResolvedValue({ message: 'ok' });
+    await state.saveMemory();
+    expect(api.post).toHaveBeenCalledWith(
+        '/api/v1/server/memory/test',
+        { xmx: '2G' },
+        { silent: true },
+    );
+    expect(messages.success).toHaveBeenCalledWith(expect.stringContaining('下次啟動生效'));
+});

@@ -4,6 +4,8 @@ package model
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type UserMinecraftServer struct {
@@ -81,4 +83,21 @@ func GetServerCount(ownerID uint) (int64, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func EditServerMemory(id uint, serverId string, xmx int64, xms *int64) error {
+	updates := map[string]interface{}{"xmx": xmx}
+	if xms != nil {
+		updates["xms"] = *xms
+	}
+	result := DB.Model(&UserMinecraftServer{}).
+		Where("owner_id = ? AND server_id = ?", id, serverId).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
