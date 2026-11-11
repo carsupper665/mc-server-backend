@@ -24,7 +24,15 @@ func ModpackConfig(c *gin.Context) {
 func ImportModpack(c *gin.Context) {
 	var reqId any
 	reqId = common.ReqId(c)
-	_, _, owner, _ := getPayloadAndId(c)
+	_, _, owner, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if status, body, blocked := createServerLimitResponse(owner); blocked {
+		c.JSON(status, body)
+		return
+	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.MRPackLimit())
 	file, err := os.CreateTemp("", "mrpack-*.mrpack")
 	if err != nil {
