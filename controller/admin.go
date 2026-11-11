@@ -58,7 +58,7 @@ func NewUser(c *gin.Context) {
 		common.Logger.Errorf("Failed to create user: %v", err)
 		return
 	}
-	common.Logger.Infof("New User Add, UserName: %s, Role: %d, Password: %s", req.Username, req.Role, req.Password)
+	common.Logger.Infof("New User Add, UserName: %s, Role: %d", req.Username, req.Role)
 	c.JSON(200, gin.H{"message": "User created successfully"})
 	return
 }
