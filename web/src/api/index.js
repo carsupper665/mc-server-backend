@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { createDiscreteApi, darkTheme } from 'naive-ui';
-import { sanitizeErrorMessage } from '../utils/errorMapping';
+import { extractAndSanitizeError } from '../utils/errorMapping';
 import { triggerBackoff, resetBackoff } from '../composables/useRateLimitGuard';
 import { clearAuthSession, ensureDeviceId, getAccessToken } from '../utils/authStorage';
 
@@ -143,9 +143,9 @@ api.interceptors.response.use(
             message.error(friendlyMsg);
         } else if (status >= 400 && status < 500 && !isSilent) {
             // 客戶端錯誤：嘗試淨化後端回傳的錯誤訊息
-            const rawError = error.response?.data?.error || error.response?.data?.message || '';
+            const rawError = error.response?.data?.code || error.response?.data?.error || error.response?.data?.message || '';
             if (rawError) {
-                const sanitized = sanitizeErrorMessage(rawError);
+                const sanitized = extractAndSanitizeError(error);
                 // 不在這裡顯示，讓元件自己處理，但儲存淨化後的訊息
                 error.sanitizedMessage = sanitized;
             }
@@ -178,8 +178,7 @@ export function getSanitizedErrorMessage(error) {
     }
 
     // 嘗試淨化後端回傳的訊息
-    const rawError = error.response?.data?.error || error.response?.data?.message || error.message || '';
-    return sanitizeErrorMessage(rawError);
+    return extractAndSanitizeError(error);
 }
 
 export default api;

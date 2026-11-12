@@ -55,6 +55,27 @@ describe('errorMapping', () => {
     });
 
     describe('extractAndSanitizeError', () => {
+        it('includes mod counts for PERM_MOD_LIMIT and falls back when either count is missing', () => {
+            const data = { code: 'PERM_MOD_LIMIT', mod_count: 120, max_mods: 100, error: 'mod limit exceeded' };
+            expect(extractAndSanitizeError({ response: { data } }))
+                .toBe('整合包有 120 個模組，超過上限 100 個');
+
+            for (const counts of [{}, { mod_count: 120 }, { max_mods: 100 }]) {
+                expect(extractAndSanitizeError({ response: { data: { code: 'PERM_MOD_LIMIT', ...counts } } }))
+                    .toBe('已達模組數量上限');
+            }
+        });
+
+        it('maps a permission code even without an error message', () => {
+            expect(extractAndSanitizeError({ response: { data: { code: 'PERM_EDIT_ARGS' } } }))
+                .toBe('只有 Root 可以修改 JVM 參數');
+        });
+
+        it('falls back to message sanitization for an unknown code', () => {
+            expect(extractAndSanitizeError({ response: { data: { code: 'PERM_UNKNOWN', error: 'permission denied' } } }))
+                .toBe('權限不足');
+        });
+
         it('should extract error from response.data.error', () => {
             const error = {
                 response: {
