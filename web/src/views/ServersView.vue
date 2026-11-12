@@ -12,12 +12,14 @@ import { useMobileLayout } from '../composables/useMobileLayout';
 import MinecraftLoader from '../components/MinecraftLoader.vue';
 import ModpackImport from '../components/ModpackImport.vue';
 import { useModInstallStore } from '../store/modInstall';
+import { useAuthStore } from '../store/auth';
 
 const isMobile = useMobileLayout();
 const message = useMessage();
 const router = useRouter();
 const versionCache = useVersionCacheStore();
 const installs = useModInstallStore();
+const auth = useAuthStore();
 watch(() => installs.jobs.filter(job => job.status === 'completed').length, () => fetchServers());
 
 const servers = ref([]);
@@ -95,6 +97,7 @@ const fetchServers = async () => {
 };
 
 const handleCreate = async () => {
+  if (loading.value || !auth.canCreateServer(servers.value.length)) return;
   if (!createForm.value.display_name) {
     message.warning('請輸入伺服器名稱');
     return;
@@ -208,6 +211,7 @@ onMounted(() => {
         <n-space justify="space-between" align="center">
           <div>
             <h2 class="title">SERVER INSTANCES</h2>
+            <div>伺服器數 {{ servers.length }} / {{ auth.serverLimit }}</div>
             <n-text depth="3">MANAGE YOUR MINECRAFT ENVIRONMENTS</n-text>
           </div>
           <n-space>
@@ -216,7 +220,7 @@ onMounted(() => {
               REFRESH
             </n-button>
             <ModpackImport @submitted="fetchServers" />
-            <n-button type="primary" @click="showCreateModal = true">
+            <n-button type="primary" :disabled="loading || !auth.canCreateServer(servers.length)" @click="showCreateModal = true">
               <template #icon><n-icon><PlusOutlined /></n-icon></template>
               DEPLOY NEW SERVER
             </n-button>
@@ -283,7 +287,7 @@ onMounted(() => {
           <n-button 
             type="primary" 
             :loading="creating" 
-            :disabled="isDeploying"
+            :disabled="isDeploying || loading || !auth.canCreateServer(servers.length)"
             @click="handleCreate"
           >
             INITIALIZE DEPLOYMENT
