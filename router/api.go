@@ -58,7 +58,7 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.GET("/start/:server_id", c.Start)
 
 		serverApi.GET("/list/backup/:server_id", c.ListServerBackup)
-		serverApi.GET("/backup/:server_id", c.Backup)
+		serverApi.POST("/backup/:server_id", c.Backup)
 		serverApi.POST("/recover", c.SaveRollBack)
 
 		serverApi.POST("/property/:server_id", c.GetServerProperties)

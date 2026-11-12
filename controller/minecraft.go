@@ -796,6 +796,16 @@ func (sc *ServerController) Backup(c *gin.Context) {
 		return
 	}
 
+	perm, isRoot, status, body := userPermission(uintID)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+	if !isRoot && !perm.CanBackUpServer {
+		c.JSON(http.StatusForbidden, gin.H{"error": "沒有建立備份的權限", "code": "PERM_BACKUP_DENIED"})
+		return
+	}
+
 	serverInfo, err := model.GetServerByID(uintID, sid)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get server information."})

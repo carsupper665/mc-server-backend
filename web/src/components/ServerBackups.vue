@@ -4,6 +4,7 @@ import { NCard, NButton, NIcon, NText, NSpace, NModal, NInput, useMessage } from
 import { SaveOutlined } from '@vicons/antd';
 import api, { getSanitizedErrorMessage } from '../api';
 import { useActivityLogStore } from '../store/activityLog';
+import { useAuthStore } from '../store/auth';
 
 const props = defineProps({
   serverId: {
@@ -24,6 +25,7 @@ const emit = defineEmits(['recovery-started', 'request-stop', 'request-start', '
 
 const message = useMessage();
 const activityLog = useActivityLogStore();
+const auth = useAuthStore();
 
 // Backups state
 const backups = ref([]);
@@ -175,6 +177,7 @@ defineExpose({ fetchBackups });
     <n-card title="BACKUPS" class="backup-card">
       <template #header-extra>
         <n-button 
+          v-if="auth.user?.permissions?.can_back_up_server"
           size="tiny" 
           tertiary 
           :disabled="isBackingUp"
