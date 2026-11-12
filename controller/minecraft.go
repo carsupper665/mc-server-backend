@@ -352,6 +352,25 @@ func modLimitResponse(uid uint, serverID string) (status int, body gin.H, blocke
 	return 0, nil, false
 }
 
+func modpackModLimitResponse(uid uint, modCount int) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if int64(modCount) > perm.MaxModsCount {
+		return http.StatusForbidden, gin.H{
+			"error":     fmt.Sprintf("整合包有 %d 個 mod，超過上限 %d 個", modCount, perm.MaxModsCount),
+			"code":      "PERM_MOD_LIMIT",
+			"mod_count": modCount,
+			"max_mods":  perm.MaxModsCount,
+		}, true
+	}
+	return 0, nil, false
+}
+
 func startFailureResponse(err error) (status int, body gin.H) {
 	switch {
 	case errors.Is(err, service.ErrAlreadyRunning):

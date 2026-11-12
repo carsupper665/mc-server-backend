@@ -71,6 +71,10 @@ func ImportModpack(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Mod Pack Parse Error", "request_id": reqId})
 		return
 	}
+	if status, body, blocked := modpackModLimitResponse(owner, pack.ModJarCount()); blocked {
+		c.JSON(status, body)
+		return
+	}
 	session, err := service.StartModpackInstall(owner, pack, file, xms, xmx)
 	if err != nil {
 		logger.Errorf("Fail to Start Mod Pack Install Error: %v, req_id: %v", err, reqId)
