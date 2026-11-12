@@ -8,6 +8,7 @@ import (
 	"go-backend/model"
 	"go-backend/service"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -813,6 +814,14 @@ func (sc *ServerController) Backup(c *gin.Context) {
 	}
 
 	err = sc.svc.Backup(serverInfo.ServerID, serverInfo.SystemPath)
+	if err == nil && !isRoot {
+		var backups []string
+		backups, err = sc.svc.ListBackups(serverInfo.SystemPath)
+		for int64(len(backups)) > perm.MaxBackUpCount && err == nil {
+			err = os.RemoveAll(filepath.Join(serverInfo.SystemPath, "backup", backups[0]))
+			backups = backups[1:]
+		}
+	}
 
 	if err != nil {
 		if !errors.Is(err, service.ErrServerRunning) {
