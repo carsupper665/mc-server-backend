@@ -65,18 +65,11 @@ func TestMemoryLimitUndefinedRole(t *testing.T) {
 func TestDefaultMemoryForUserGuestCaps(t *testing.T) {
 	setupCreateLimitDB(t)
 	user := createLimitUser(t, common.RoleGuestUser)
-	perm, ok := common.PermFor(common.RoleGuestUser)
-	if !ok {
-		t.Fatal("guest permission missing")
-	}
 	xms, xmx, status, body := defaultMemoryForUser(user.ID)
 	if status != 0 {
 		t.Fatalf("guest defaults: status=%d body=%v", status, body)
 	}
-	if xmx != perm.ServerMaxMem {
-		t.Fatalf("guest xmx=%d, want %d", xmx, perm.ServerMaxMem)
-	}
-	if xms > xmx {
-		t.Fatalf("guest xms=%d > xmx=%d", xms, xmx)
+	if xmx != 1*common.GB || xms != 1*common.GB {
+		t.Fatalf("guest defaults xms=%d xmx=%d, want both 1GB", xms, xmx)
 	}
 }

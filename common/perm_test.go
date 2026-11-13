@@ -59,11 +59,8 @@ func TestDefaultServerMemory(t *testing.T) {
 		t.Fatal("guest permission missing")
 	}
 	xms, xmx := DefaultServerMemory(guest.ServerMaxMem, false)
-	if xmx != guest.ServerMaxMem {
-		t.Fatalf("guest xmx=%d, want %d", xmx, guest.ServerMaxMem)
-	}
-	if xms > xmx {
-		t.Fatalf("guest xms=%d > xmx=%d", xms, xmx)
+	if xmx != 1*GB || xms != 1*GB {
+		t.Fatalf("guest defaults xms=%d xmx=%d, want both 1GB", xms, xmx)
 	}
 
 	member, ok := PermFor(RoleMemberUser)

@@ -70,7 +70,7 @@ func TestCurrentUserPermissions(t *testing.T) {
 		maxMem, maxServer, maxOnline, maxMods, maxBackup int64
 		create, backup, unlimited                        bool
 	}{
-		{"guest", common.RoleGuestUser, 512 * common.MB, 1, 1, 10, 0, true, false, false},
+		{"guest", common.RoleGuestUser, 1 * common.GB, 1, 1, 10, 0, true, false, false},
 		{"member", common.RoleMemberUser, 3 * common.GB, 5, 1, 50, 0, true, false, false},
 		{"external member", common.RoleExternalMemberUser, 3 * common.GB, 5, 1, 50, 0, true, false, false},
 		{"vip", common.RoleVipMemberUser, 8 * common.GB, 10, 2, 256, 5, true, true, false},

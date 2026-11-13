@@ -33,7 +33,7 @@ var memberPermission = Permission{
 
 var RolePerm = map[int]Permission{
 	RoleGuestUser: Permission{
-		ServerMaxMem:      512 * MB,
+		ServerMaxMem:      1 * GB,
 		MaxServerCount:    1,
 		MaxOnlineCount:    1,
 		MaxModsCount:      10,
