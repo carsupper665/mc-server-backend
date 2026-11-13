@@ -149,3 +149,6 @@ async function submit() {
   </n-modal>
 </template>
 
+<style scoped>
+input[type="file"] { max-width: 100%; }
+</style>
