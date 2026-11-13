@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,15 +27,38 @@ type importTransport func(*http.Request) (*http.Response, error)
 func (f importTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestImportEndpointAndOwner(t *testing.T) {
+	// Other import tests shut down the process-wide modpack manager permanently.
+	if os.Getenv("TEST_IMPORT_ENDPOINT_CHILD") != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestImportEndpointAndOwner$", "-test.v")
+		cmd.Env = append(os.Environ(), "TEST_IMPORT_ENDPOINT_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("isolated import test failed: %v\n%s", err, output)
+		}
+		t.Logf("%s", output)
+		return
+	}
+	oldLogDir, oldLogger := *common.LogDir, logger
+	*common.LogDir = t.TempDir()
+	testLogger, err := common.NewSysLogger("modpack-test", nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger = testLogger
+	t.Cleanup(func() {
+		_ = testLogger.Close()
+		*common.LogDir, logger = oldLogDir, oldLogger
+	})
 	oldDB, oldRoot, oldClient := model.DB, common.MinecraftServerPath, http.DefaultClient
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "api.db")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	model.DB = db
-	if err = db.AutoMigrate(&model.UserMinecraftServer{}); err != nil {
+	if err = db.AutoMigrate(&model.User{}, &model.UserMinecraftServer{}); err != nil {
 		t.Fatal(err)
 	}
+	user := createLimitUser(t, common.RoleMemberUser)
 	common.MinecraftServerPath = t.TempDir()
 	http.DefaultClient = &http.Client{Transport: importTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("server")), Header: make(http.Header)}, nil
@@ -48,7 +73,7 @@ func TestImportEndpointAndOwner(t *testing.T) {
 	r := gin.New()
 	// Authentication is supplied by the existing router middleware in production.
 	r.Use(func(c *gin.Context) {
-		owner := uint(1)
+		owner := user.ID
 		if c.GetHeader("Test-Owner") == "2" {
 			owner = 2
 		}

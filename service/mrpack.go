@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 
@@ -22,8 +23,8 @@ func MRPackLimit() int64 {
 }
 
 func MRPackBlacklist() []string {
-	value := common.GetEnvOrDefaultString("MRPACK_BLACKLIST", DefaultMRPackBlacklist)
-	if value == "" {
+	value, exists := os.LookupEnv("MRPACK_BLACKLIST")
+	if !exists {
 		value = DefaultMRPackBlacklist
 	}
 	return strings.Split(value, ",")

@@ -52,6 +52,9 @@ func packBytes(t *testing.T, pack MRPack, overrides ...string) []byte {
 
 func TestMRPackFixture(t *testing.T) {
 	data, err := os.ReadFile("../test/mrcpack/test_mod_pack.mrpack")
+	if os.IsNotExist(err) {
+		t.Skip("optional mrpack fixture is not present")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
