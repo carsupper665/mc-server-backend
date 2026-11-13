@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, unref } from 'vue';
+import { RouterLink } from 'vue-router';
 import {
   NSpace,
   NButton,
@@ -59,6 +60,8 @@ const server = ref({
 });
 
 const serverDetails = ref(null);
+const serverInfoLoading = ref(true);
+const serverUnavailable = ref(false);
 
 const displayName = computed(() => serverDetails.value?.display_name || '');
 const displayId = computed(() => serverDetails.value?.server_id || '');
@@ -130,12 +133,21 @@ const fetchServerInfo = async () => {
     if (!detail || !detail.server_id) {
       return;
     }
+    serverUnavailable.value = false;
     serverDetails.value = detail;
     syncMemoryInputs(detail);
     syncJvmArgsInput(detail);
   } catch (err) {
+    if ([403, 404].includes(err.response?.status)) {
+      serverUnavailable.value = true;
+      serverDetails.value = null;
+      smartPolling?.stopPolling();
+      return;
+    }
     console.error('Failed to fetch server details:', err);
     message.error('無法載入伺服器資訊: ' + getSanitizedErrorMessage(err));
+  } finally {
+    serverInfoLoading.value = false;
   }
 };
 
@@ -153,7 +165,7 @@ const termInstance = computed(() => unref(consoleRef.value?.term));
 // 樂觀更新狀態
 const isOptimisticLoading = ref(false);
 const actionInFlight = ref(false);
-const actionsDisabled = computed(() => actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
+const actionsDisabled = computed(() => serverInfoLoading.value || serverUnavailable.value || actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
 const optimisticAction = ref(null); // 'starting' | 'stopping' | null
 let optimisticTimer = null;
 const clearOptimistic = () => {
@@ -171,6 +183,7 @@ const armOptimisticTimeout = () => {
 let smartPolling = null;
 
 const fetchServerDetail = async () => {
+  if (serverUnavailable.value) return;
   try {
     const res = await api.get(`/api/v1/server/status/${props.id}`, { silent: true });
 
@@ -206,7 +219,7 @@ const fetchServerDetail = async () => {
 let previousLog = '';
 let fetchingLogs = false;
 const fetchLogs = async () => {
-  if (document.hidden || fetchingLogs || !isRunning.value) return; // 伺服器未運行時不獲取日誌
+  if (serverUnavailable.value || document.hidden || fetchingLogs || !isRunning.value) return; // 伺服器未運行時不獲取日誌
   fetchingLogs = true;
   try {
     const res = await api.get(`/api/v1/server/log/${props.id}`, { silent: true });
@@ -501,7 +514,14 @@ onMounted(() => {
 
 <template>
   <div class="server-detail-view">
-    <n-space vertical :size="20">
+    <n-text v-if="serverInfoLoading">正在載入伺服器資訊...</n-text>
+    <n-space v-else-if="serverUnavailable" vertical :size="20" role="status">
+      <n-text>找不到伺服器或沒有權限</n-text>
+      <RouterLink to="/servers">
+        <n-button>返回伺服器列表</n-button>
+      </RouterLink>
+    </n-space>
+    <n-space v-else vertical :size="20">
       <div class="server-header">
         <n-space justify="space-between" align="center">
           <n-space align="baseline">
