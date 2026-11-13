@@ -43,3 +43,8 @@ output/
 .omx/
 .playwright-cli/
 test/mrcpack/*
+# local logs and tool state
+*.log
+test/logs/
+.serena/
+.backup/

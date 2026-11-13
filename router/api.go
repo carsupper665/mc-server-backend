@@ -54,8 +54,8 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.DELETE("/del/:server_id", c.DeleteServerById)
 
 		serverApi.GET("/status/:server_id", c.GetStatus)
-		serverApi.GET("/stop/:server_id", c.Stop)
-		serverApi.GET("/start/:server_id", c.Start)
+		serverApi.POST("/stop/:server_id", c.Stop)
+		serverApi.POST("/start/:server_id", c.Start)
 
 		serverApi.GET("/list/backup/:server_id", c.ListServerBackup)
 		serverApi.POST("/backup/:server_id", c.Backup)
@@ -76,9 +76,9 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 	serverMod := serverApi.Group("/mod")
 	{
 		serverMod.POST("/add/:server_id", c.AddMod)
-		serverMod.GET("/remove/:server_id", c.DelMod)
-		serverMod.GET("/update/:server_id", c.UpdateMod)
-		serverMod.GET("/toggle/:server_id", c.ToggleMod) // Enable or disable a mod on the server
+		serverMod.POST("/remove/:server_id", c.DelMod)
+		serverMod.POST("/update/:server_id", c.UpdateMod)
+		serverMod.POST("/toggle/:server_id", c.ToggleMod) // Enable or disable a mod on the server
 		serverMod.GET("/list/:server_id", c.ListMod)     // Query the list of mods installed on the server
 		serverMod.GET("/job/:job_id", c.GetModInstallJob)
 		serverMod.GET("/subscribe/:job_id", c.SubscribeModInstall)

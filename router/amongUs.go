@@ -44,8 +44,8 @@ func SetAmongUsIRouter(router *gin.Engine) {
 	admin := auRouter.Group("/appAdmin")
 	admin.Use(middleware.AdminOnly())
 	{
-		admin.GET("/end/:id", c.EndGame)
-		admin.GET("/c", c.Create)
+		admin.POST("/end/:id", c.EndGame)
+		admin.POST("/c", c.Create)
 		admin.GET("/ls", c.AllGames)
 	}
 
