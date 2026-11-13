@@ -11,7 +11,9 @@ const fail = async (url, config = {}) => {
     await expect(api.interceptors.response.handlers[0].rejected(error)).rejects.toBe(error);
     return error;
 };
-it('uses the dark theme', () => {
+it('uses the dark theme', async () => {
+    vi.resetModules();
+    await import('./index');
     expect(createDiscreteApi).toHaveBeenCalledWith(['message'], { configProviderProps: { theme: 'dark' } });
 });
 it('keeps status and log failures silent', async () => {
