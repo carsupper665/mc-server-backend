@@ -125,7 +125,7 @@ func TestRollingBackup(t *testing.T) {
 			w := postJSONAs(r, "/backup/backup-server", user.ID, nil)
 			wantStatus := http.StatusOK
 			if tt.fail {
-				wantStatus = http.StatusInternalServerError
+				wantStatus = http.StatusConflict
 			}
 			if w.Code != wantStatus {
 				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
@@ -152,5 +152,82 @@ func TestRollingBackup(t *testing.T) {
 				t.Fatalf("new backup data=%q err=%v", data, err)
 			}
 		})
+	}
+}
+
+func TestRecoverBackupName(t *testing.T) {
+	setupCreateLimitDB(t)
+	user := createLimitUser(t, common.RoleGuestUser)
+	seedOwnedServer(t, user.ID, "recover-server", 0, 0)
+	workDir := t.TempDir()
+	if err := model.DB.Model(&model.UserMinecraftServer{}).Where("server_id = ?", "recover-server").Update("system_path", workDir).Error; err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(workDir, "backup", "20261114_120000")
+	if err := os.MkdirAll(backup, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "level.dat"), []byte("saved world"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sc := NewServerController(service.NewServerService(&service.ServerManager{}))
+	r := testUIDRouter(t, "/recover", sc.SaveRollBack)
+	for _, name := range []string{"../x", "../../other/world", "/tmp/world", "a/b", "", ".", "..", `a\b`, `C:\world`, "not-a-backup"} {
+		t.Run(name, func(t *testing.T) {
+			w := postJSONAs(r, "/recover", user.ID, map[string]string{"server_id": "recover-server", "file_name": name})
+			var body map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 400 || body["code"] != "INVALID_BACKUP_NAME" {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+	w := postJSONAs(r, "/recover", user.ID, map[string]string{"server_id": "recover-server", "file_name": "20261114_120001"})
+	if w.Code != 404 {
+		t.Fatalf("missing: status=%d body=%s", w.Code, w.Body.String())
+	}
+	w = postJSONAs(r, "/recover", user.ID, map[string]string{"server_id": "recover-server", "file_name": "20261114_120000"})
+	if w.Code != 200 {
+		t.Fatalf("valid: status=%d body=%s", w.Code, w.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workDir, "world", "level.dat"))
+	if err != nil || string(data) != "saved world" {
+		t.Fatalf("data=%q err=%v", data, err)
+	}
+}
+
+func TestBackupAndRecoverInvalidWorldResponses(t *testing.T) {
+	setupCreateLimitDB(t)
+	user := createLimitUser(t, common.RoleVipMemberUser)
+	seedOwnedServer(t, user.ID, "backup-server", 0, 0)
+	dir := t.TempDir()
+	if err := model.DB.Model(&model.UserMinecraftServer{}).Where("server_id = ?", "backup-server").Update("system_path", dir).Error; err != nil {
+		t.Fatal(err)
+	}
+	sc := NewServerController(service.NewServerService(&service.ServerManager{}))
+	r := testUIDRouter(t, "/backup/:server_id", sc.Backup)
+	w := postJSONAs(r, "/backup/backup-server", user.ID, nil)
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 409 || body["code"] != "NO_WORLD" || body["error"] != "伺服器尚未產生世界，請先啟動一次" {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "backup")); !os.IsNotExist(err) {
+		t.Fatalf("backup directory created: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "backup", "20261114_120000"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r = testUIDRouter(t, "/recover", sc.SaveRollBack)
+	w = postJSONAs(r, "/recover", user.ID, map[string]string{"server_id": "backup-server", "file_name": "20261114_120000"})
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 400 || body["code"] != "INVALID_BACKUP" {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }

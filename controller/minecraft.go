@@ -390,7 +390,7 @@ type ServerController struct {
 }
 
 type SaveRollBackRequest struct {
-	FileName string `json:"file_name" binding:"required"`
+	FileName string `json:"file_name"`
 	ServerID string `json:"server_id" binding:"required"`
 }
 
@@ -410,8 +410,12 @@ func (sc *ServerController) ListServerBackup(c *gin.Context) {
 
 	serverInfo, err := model.GetServerByID(uintID, serverID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"error": "Server not found"})
+			return
+		}
 		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
-		c.JSON(500, gin.H{"error": "Server start Failed."})
+		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
 		return
 	}
 
@@ -486,6 +490,7 @@ func (sc *ServerController) SaveRollBack(c *gin.Context) {
 
 	if err := model.IsOwner(uintID, req.ServerID); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
+		return
 	}
 
 	serverInfo, err := model.GetServerByID(uintID, req.ServerID)
@@ -498,6 +503,18 @@ func (sc *ServerController) SaveRollBack(c *gin.Context) {
 	err = sc.svc.RollBackSave(req.ServerID, req.FileName, serverInfo.SystemPath)
 
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidBackup) {
+			c.JSON(400, gin.H{"error": "Invalid backup", "code": "INVALID_BACKUP"})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidBackupName) {
+			c.JSON(400, gin.H{"error": "Invalid backup name", "code": "INVALID_BACKUP_NAME"})
+			return
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			c.JSON(404, gin.H{"error": "Backup not found"})
+			return
+		}
 		if !errors.Is(err, service.ErrServerRunning) {
 			common.LogError(c.Request.Context(), "RollBackSave error: "+err.Error())
 			c.JSON(500, gin.H{"error": "Failed to save server to user"})
@@ -824,6 +841,10 @@ func (sc *ServerController) Backup(c *gin.Context) {
 	}
 
 	if err != nil {
+		if errors.Is(err, service.ErrNoWorld) {
+			c.JSON(409, gin.H{"error": service.ErrNoWorld.Error(), "code": "NO_WORLD"})
+			return
+		}
 		if !errors.Is(err, service.ErrServerRunning) {
 			common.LogError(c.Request.Context(), "Backup error: "+err.Error())
 		}
@@ -892,12 +913,20 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 
 	err = model.IsOwner(id_uint, serverID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"error": "Server not found"})
+			return
+		}
 		c.JSON(500, gin.H{"error": "You are not the owner of this server"})
 		return
 	}
 
 	serverData, err := model.GetServerByID(id_uint, serverID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"error": "Server not found"})
+			return
+		}
 		common.LogDebug(c.Request.Context(), "GetServerByID error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
 		return
