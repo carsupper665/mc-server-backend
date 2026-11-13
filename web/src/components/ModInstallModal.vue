@@ -52,7 +52,7 @@ const modalStyle = computed(() => ({
   flexDirection: 'column'
 }));
 
-const selectedServerId = ref('');
+const selectedServerId = ref(null);
 const selectedVersionId = ref('');
 const versionOptions = ref([]);
 const loadingVersions = ref(false);
@@ -194,7 +194,7 @@ const handleInstall = () => {
 
 watch(() => props.show, (val) => {
   if (val) {
-    selectedServerId.value = '';
+    selectedServerId.value = null;
     selectedVersionId.value = '';
     versionOptions.value = [];
     compatibility.value = { ok: false, reason: '請先選擇伺服器' };

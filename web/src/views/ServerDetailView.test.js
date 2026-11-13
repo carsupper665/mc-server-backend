@@ -143,3 +143,50 @@ it('shows JVM args editor only for Root and saves args', async () => {
     );
     expect(messages.success).toHaveBeenCalledWith(expect.stringContaining('下次啟動生效'));
 });
+
+
+it.each([403, 404])('hides server controls and links to the server list on details %s', async status => {
+    await flushPromises();
+    wrapper.unmount();
+    api.get.mockImplementation(async url => {
+        if (url.includes('/details/')) throw { response: { status } };
+        return { status: 'stopped' };
+    });
+    wrapper = shallowMount(ServerDetailView, {
+        props: { id: 'root-server' },
+        global: { plugins: [pinia], renderStubDefaultSlot: true },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('找不到伺服器或沒有權限');
+    expect(wrapper.findComponent({ name: 'RouterLink' }).props('to')).toBe('/servers');
+    expect(wrapper.text()).toContain('返回伺服器列表');
+    expect(wrapper.text()).not.toContain('START');
+    expect(wrapper.text()).not.toContain('STOP');
+    expect(wrapper.text()).not.toContain('MEMORY');
+    expect(wrapper.findComponent({ name: 'ServerConsole' }).exists()).toBe(false);
+    api.get.mockClear();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(api.get).not.toHaveBeenCalled();
+    expect(messages.error).not.toHaveBeenCalled();
+});
+
+
+it('keeps controls hidden until server details finish loading', async () => {
+    await flushPromises();
+    wrapper.unmount();
+    let resolveDetails;
+    api.get.mockImplementation(async url => {
+        if (url.includes('/details/')) return new Promise(resolve => { resolveDetails = resolve; });
+        return { status: 'stopped' };
+    });
+    wrapper = shallowMount(ServerDetailView, {
+        props: { id: 'test' },
+        global: { plugins: [pinia], renderStubDefaultSlot: true },
+    });
+    await flushPromises();
+    expect(wrapper.find('.server-header').exists()).toBe(false);
+    resolveDetails({ server: { server_id: 'test' } });
+    await flushPromises();
+    expect(wrapper.find('.server-header').exists()).toBe(true);
+    expect(wrapper.text()).toContain('START');
+});
