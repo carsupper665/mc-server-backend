@@ -42,7 +42,7 @@ func SetAmongUsIRouter(router *gin.Engine) {
 	}
 
 	admin := auRouter.Group("/appAdmin")
-	admin.Use(middleware.AdminOnly())
+	admin.Use(middleware.ValidateJWTV2(), middleware.AdminOnly())
 	{
 		admin.POST("/end/:id", c.EndGame)
 		admin.POST("/c", c.Create)
