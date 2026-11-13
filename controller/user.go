@@ -10,6 +10,7 @@ import (
 	"go-backend/service"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -338,7 +339,7 @@ func (s *EmailChallengeStore) UrlVerifyLogin(c *gin.Context) {
 	_ = model.RecordAttempt(clientIP, true)
 	frontend := common.GetEnvOrDefaultString("FRONTEND_BASE_URL", "http://localhost:3000")
 	authCode := common.GetRandomString(32)
-	uri := fmt.Sprintf("%s/login/callback?code=%s?=id%s", frontend, authCode, id)
+	uri := fmt.Sprintf("%s/login/callback?code=%s&id=%s", frontend, url.QueryEscape(authCode), url.QueryEscape(id))
 
 	s.setVerifyToken(id, authCode, email)
 
