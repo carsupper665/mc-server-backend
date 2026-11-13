@@ -331,6 +331,30 @@ func (q *installQueue) hasJob(jobID string) bool {
 	return ok
 }
 
+// CountPendingInstallJobs returns how many install jobs for serverID are queued or running.
+// Those jobs have not been written to server_mods yet, so the mod cap has to count them too.
+func CountPendingInstallJobs(serverID string) int {
+	modInstallQueue.mu.Lock()
+	matched := make([]*InstallJob, 0)
+	for _, job := range modInstallQueue.jobs {
+		if job != nil && job.ServerID == serverID {
+			matched = append(matched, job)
+		}
+	}
+	modInstallQueue.mu.Unlock()
+
+	n := 0
+	for _, job := range matched {
+		job.mu.Lock()
+		status := job.Status
+		job.mu.Unlock()
+		if status == JobQueued || status == JobRunning {
+			n++
+		}
+	}
+	return n
+}
+
 func (q *installQueue) getJob(jobID string) *InstallJob {
 	q.mu.Lock()
 	defer q.mu.Unlock()

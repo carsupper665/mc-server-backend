@@ -68,10 +68,11 @@ var EmailLoginAuthServerList = []string{
 }
 
 const (
-	RoleGuestUser     = 0
-	RoleMemberUser    = 1
-	RoleVipMemberUser = 2
-	RoleRootUser      = 6
+	RoleGuestUser          = 0
+	RoleMemberUser         = 1
+	RoleVipMemberUser      = 2
+	RoleExternalMemberUser = 3
+	RoleRootUser           = 6
 )
 
 // 到時候看看可以應用在哪裡

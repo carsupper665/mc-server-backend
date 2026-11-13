@@ -82,7 +82,7 @@ func startPack(t *testing.T, p MRPack, overrides ...string) *ModpackSession {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := StartModpackInstall(7, parsed, file)
+	s, err := StartModpackInstall(7, parsed, file, 1024*1024*1024, 2*1024*1024*1024)
 	if err != nil {
 		file.Close()
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestModpackShutdownCancelsAndSaves(t *testing.T) {
 	if server.InstallStatus != "interrupted" || !strings.Contains(server.InstallDetails, "backend shutdown") {
 		t.Fatal("interruption not recorded")
 	}
-	if _, err := StartModpackInstall(7, &MRPack{Dependencies: map[string]string{"minecraft": "1.21.6", "fabric-loader": "0.18.1"}}, nil); err == nil {
+	if _, err := StartModpackInstall(7, &MRPack{Dependencies: map[string]string{"minecraft": "1.21.6", "fabric-loader": "0.18.1"}}, nil, 1024*1024*1024, 2*1024*1024*1024); err == nil {
 		t.Fatal("accepted session after shutdown")
 	}
 }

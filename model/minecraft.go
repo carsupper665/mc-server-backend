@@ -4,13 +4,15 @@ package model
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type UserMinecraftServer struct {
 	OwnerID     uint   `gorm:"primaryKey;not null" json:"owner_id"`
 	DisplayName string `gorm:"size:100;not null" json:"display_name"`
 	ServerID    string `gorm:"primaryKey;size:32;not null" json:"server_id"`
-	Args        string `gorm:"size:100;default:''" json:"args"`
+	Args        string `gorm:"size:1000;default:''" json:"args"`
 	Xms         int64  `gorm:"default:1073741824" json:"xms"` //minMemBytes
 	Xmx         int64  `gorm:"default:2147483648" json:"xmx"` //maxMemBytes
 
@@ -29,13 +31,13 @@ type UserMinecraftServer struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
-func AddServerToUser(userID uint, serverID, displayName, ver, modLoader, loaderVer string, systemPath string) error {
+func AddServerToUser(userID uint, serverID, displayName, ver, modLoader, loaderVer string, systemPath string, xms, xmx int64) error {
 	userServer := UserMinecraftServer{
 		OwnerID:       userID,
 		ServerID:      serverID,
 		DisplayName:   displayName,
-		Xms:           1024 * 1024 * 1024,
-		Xmx:           2 * 1024 * 1024 * 1024,
+		Xms:           xms,
+		Xmx:           xmx,
 		MCVersion:     ver,
 		ModLoader:     modLoader,
 		LoaderVersion: loaderVer,
@@ -72,4 +74,43 @@ func GetServerByID(userID uint, serverID string) (*UserMinecraftServer, error) {
 		return nil, err
 	}
 	return &server, nil
+}
+
+func GetServerCount(ownerID uint) (int64, error) {
+	var count int64
+	err := DB.Model(&UserMinecraftServer{}).Where("owner_id = ?", ownerID).Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func EditServerMemory(id uint, serverId string, xmx int64, xms *int64) error {
+	updates := map[string]interface{}{"xmx": xmx}
+	if xms != nil {
+		updates["xms"] = *xms
+	}
+	result := DB.Model(&UserMinecraftServer{}).
+		Where("owner_id = ? AND server_id = ?", id, serverId).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func EditServerArgs(id uint, serverId string, args string) error {
+	result := DB.Model(&UserMinecraftServer{}).
+		Where("owner_id = ? AND server_id = ?", id, serverId).
+		Update("args", args)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

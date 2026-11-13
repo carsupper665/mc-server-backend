@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { shallowMount, flushPromises } from '@vue/test-utils';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ServerDetailView from './ServerDetailView.vue';
+import { useAuthStore } from '../store/auth';
 import api from '../api';
 const messages = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('naive-ui', async () => ({ ...await vi.importActual('naive-ui'), useMessage: () => messages }));
@@ -10,12 +11,15 @@ vi.mock('../api', async () => ({ default: { get: vi.fn(), post: vi.fn() }, getSa
 vi.mock('../components/ServerConsole.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../components/MacroPanel.vue', () => ({ default: { template: '<div />' } }));
 let wrapper;
+let pinia;
 beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    pinia = createPinia();
+    setActivePinia(pinia);
     api.get.mockImplementation(async url => url.includes('/status/') ? { status: 'running' } : {});
-    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [createPinia()] } });
+    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [pinia] } });
 });
 afterEach(() => { wrapper.unmount(); vi.useRealTimers(); });
 it('appends only new logs, resets replacements and skips hidden polls', async () => {
@@ -69,4 +73,73 @@ it('blocks duplicate actions and restores backend status on failed stop', async 
     expect(state.server.status).toBe('running');
     expect(state.actionsDisabled).toBe(false);
     expect(messages.error).toHaveBeenCalledTimes(1);
+});
+
+it('loads memory inputs and saves xmx without empty xms', async () => {
+    const gb = 1024 * 1024 * 1024;
+    api.get.mockImplementation(async url => {
+        if (url.includes('/status/')) return { status: 'stopped' };
+        if (url.includes('/details/')) {
+            return { server: { server_id: 'test', display_name: 'n', mod_loader: 'Vanilla', xmx: 2 * gb, xms: 1 * gb } };
+        }
+        return {};
+    });
+    wrapper.unmount();
+    pinia = createPinia();
+    setActivePinia(pinia);
+    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [pinia] } });
+    await flushPromises();
+
+    const state = wrapper.vm.$.setupState;
+    expect(state.memoryXmx).toBe('2G');
+    expect(state.memoryXms).toBe('1G');
+
+    state.memoryXms = '';
+    api.post.mockResolvedValue({ message: 'ok' });
+    await state.saveMemory();
+    expect(api.post).toHaveBeenCalledWith(
+        '/api/v1/server/memory/test',
+        { xmx: '2G' },
+        { silent: true },
+    );
+    expect(messages.success).toHaveBeenCalledWith(expect.stringContaining('下次啟動生效'));
+});
+
+it('shows JVM args editor only for Root and saves args', async () => {
+    api.get.mockImplementation(async url => {
+        if (url.includes('/status/')) return { status: 'stopped' };
+        if (url.includes('/details/')) {
+            return { server: { server_id: 'test', display_name: 'n', mod_loader: 'Vanilla', args: '-XX:+UseG1GC' } };
+        }
+        return {};
+    });
+
+    wrapper.unmount();
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().user = { role: 1, username: 'member' };
+    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [pinia] } });
+    await flushPromises();
+    expect(wrapper.vm.$.setupState.isRoot).toBe(false);
+
+    wrapper.unmount();
+    pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().user = { role: 6, username: 'root' };
+    wrapper = shallowMount(ServerDetailView, { props: { id: 'test' }, global: { plugins: [pinia] } });
+    await flushPromises();
+
+    const state = wrapper.vm.$.setupState;
+    expect(state.isRoot).toBe(true);
+    expect(state.jvmArgs).toBe('-XX:+UseG1GC');
+
+    state.jvmArgs = '-Xlog:gc';
+    api.post.mockResolvedValue({ message: 'ok' });
+    await state.saveJvmArgs();
+    expect(api.post).toHaveBeenCalledWith(
+        '/api/v1/server/args/test',
+        { args: '-Xlog:gc' },
+        { silent: true },
+    );
+    expect(messages.success).toHaveBeenCalledWith(expect.stringContaining('下次啟動生效'));
 });

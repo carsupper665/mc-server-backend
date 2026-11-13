@@ -18,11 +18,6 @@ import (
 	"time"
 )
 
-const (
-	// MaxServersPerOwner 限制每個 owner 同時開啟的最大伺服器數量
-	MaxServersPerOwner = 3
-)
-
 var (
 	ErrAlreadyRunning     = errors.New("server already running")
 	ErrNotFound           = errors.New("server Not Found")
@@ -68,6 +63,12 @@ func NewServer(sid, oid, workDir, maxMem, minMem string, portStr string, callbac
 	}
 }
 
+// SplitJVMArgs splits stored JVM args by whitespace (strings.Fields).
+// Quotes are not special and remain part of the token.
+func SplitJVMArgs(args string) []string {
+	return strings.Fields(args)
+}
+
 func (s *Server) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,10 +79,9 @@ func (s *Server) Start() error {
 	cmdArgs := []string{
 		"-Xms" + s.minMem,
 		"-Xmx" + s.maxMem,
-		"-jar", "server.jar",
-		"--port", s.port,
 	}
 	cmdArgs = append(cmdArgs, s.args...)
+	cmdArgs = append(cmdArgs, "-jar", "server.jar", "--port", s.port)
 	common.Logger.Debugf("Starting server with args: %v", cmdArgs)
 	cmd := exec.CommandContext(context.Background(), "java", cmdArgs...)
 	cmd.Dir = s.workDir
@@ -354,7 +354,7 @@ func (sm *ServerManager) countByOwner(oid string) int {
 	defer sm.mu.RUnlock()
 	count := 0
 	for _, srv := range sm.servers {
-		if srv.oid == oid {
+		if srv.oid == oid && srv.Status() == "running" {
 			count++
 		}
 	}
@@ -398,17 +398,13 @@ func (sm *ServerManager) releasePortWithOutLock(portStr string) {
 }
 
 func (sm *ServerManager) StartServer(sid, oid, workDir, maxMem, minMem string, args []string) (*Server, error) {
-	if sm.countByOwner(oid) >= MaxServersPerOwner {
-		return nil, ErrMaxReached
-	}
-
 	sm.mu.Lock()
 	if s, exists := sm.servers[sid]; exists {
 		err := s.Start()
 		if err != nil && errors.Is(err, ErrAlreadyRunning) {
 			sm.mu.Unlock()
 			common.SysDebug("server already running sid: " + sid)
-			return s, nil
+			return nil, ErrAlreadyRunning
 		} else if err != nil {
 			panic("Unknow error:" + err.Error())
 		}

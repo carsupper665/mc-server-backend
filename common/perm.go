@@ -1,16 +1,15 @@
 package common
 
-// TODO 實裝這些功能
 type Permission struct {
 	ServerMaxMem      int64 // B
-	MaxServerCount    int8
-	MaxOnlineCount    int8
-	MaxModsCount      int16
+	MaxServerCount    int64
+	MaxOnlineCount    int64
+	MaxModsCount      int64
 	CanAddUser        bool
 	CanCreateServer   bool
 	CanEditServerArgs bool
 	CanBackUpServer   bool
-	MaxBackUpCount    int8
+	MaxBackUpCount    int64
 }
 
 var (
@@ -19,6 +18,19 @@ var (
 	MB       = KB * 1024
 	GB       = MB * 1024
 )
+
+var memberPermission = Permission{
+	ServerMaxMem:      3 * GB,
+	MaxServerCount:    5,
+	MaxOnlineCount:    1,
+	MaxModsCount:      50,
+	CanAddUser:        false,
+	CanCreateServer:   true,
+	CanEditServerArgs: false,
+	CanBackUpServer:   false,
+	MaxBackUpCount:    0,
+}
+
 var RolePerm = map[int]Permission{
 	RoleGuestUser: Permission{
 		ServerMaxMem:      512 * MB,
@@ -31,21 +43,12 @@ var RolePerm = map[int]Permission{
 		CanBackUpServer:   false,
 		MaxBackUpCount:    0,
 	},
-	RoleMemberUser: Permission{
-		ServerMaxMem:      3 * GB,
-		MaxServerCount:    5,
-		MaxOnlineCount:    2,
-		MaxModsCount:      50,
-		CanAddUser:        false,
-		CanCreateServer:   true,
-		CanEditServerArgs: false,
-		CanBackUpServer:   false,
-		MaxBackUpCount:    0,
-	},
+	RoleMemberUser:         memberPermission,
+	RoleExternalMemberUser: memberPermission,
 	RoleVipMemberUser: Permission{
 		ServerMaxMem:      8 * GB,
 		MaxServerCount:    10,
-		MaxOnlineCount:    5,
+		MaxOnlineCount:    2,
 		MaxModsCount:      256,
 		CanAddUser:        false,
 		CanCreateServer:   true,
@@ -53,4 +56,37 @@ var RolePerm = map[int]Permission{
 		CanBackUpServer:   true,
 		MaxBackUpCount:    5,
 	},
+}
+
+// DefaultServerMemory returns create-time Xms/Xmx, capped by ServerMaxMem unless unlimited.
+func DefaultServerMemory(maxMem int64, unlimited bool) (xms, xmx int64) {
+	xmx = 2 * GB
+	xms = 1 * GB
+	if !unlimited && xmx > maxMem {
+		xmx = maxMem
+	}
+	if xms > xmx {
+		xms = xmx
+	}
+	return xms, xmx
+}
+
+func IsRoot(role int) bool {
+	return role == RoleRootUser
+}
+
+func PermFor(role int) (Permission, bool) {
+	perm, ok := RolePerm[role]
+	return perm, ok
+}
+
+func IsAssignableRole(role int) bool {
+	if role == RoleExternalMemberUser {
+		return false
+	}
+	if IsRoot(role) {
+		return true
+	}
+	_, ok := PermFor(role)
+	return ok
 }

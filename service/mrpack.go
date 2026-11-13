@@ -188,6 +188,23 @@ func ParseMRPack(reader io.ReaderAt, size int64, blacklist []string) (*MRPack, e
 	return &pack, nil
 }
 
+// ModJarCount counts distinct mods/*.jar paths; an override replaces a file of the same path.
+func (p *MRPack) ModJarCount() int {
+	jars := map[string]bool{}
+	for _, file := range p.Files {
+		if strings.HasPrefix(file.Path, "mods/") && strings.HasSuffix(file.Path, ".jar") {
+			jars[file.Path] = true
+		}
+	}
+	for _, entry := range p.Overrides {
+		_, name, _ := strings.Cut(entry.Name, "/")
+		if strings.HasPrefix(name, "mods/") && strings.HasSuffix(name, ".jar") {
+			jars[name] = true
+		}
+	}
+	return len(jars)
+}
+
 func (p *MRPack) Loader() (string, string, error) {
 	loader, version := Vanilla, ""
 	for id, value := range p.Dependencies {

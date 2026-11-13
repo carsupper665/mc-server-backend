@@ -154,6 +154,20 @@ func setupMockModrinth(t *testing.T, versionID, versionNumber, filename, loader,
 	}
 }
 
+func insertUser(t *testing.T, id uint, role int) {
+	t.Helper()
+	if err := model.DB.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("migrate user: %v", err)
+	}
+	user := model.User{
+		ID: id, Username: fmt.Sprintf("u%d", id), DisplayName: "U",
+		Email: fmt.Sprintf("u%d@example.test", id), Password: "h", Salt: "s", Role: role,
+	}
+	if err := model.DB.Create(&user).Error; err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+}
+
 func insertServer(t *testing.T, ownerID uint, serverID, systemPath, modLoader, mcVersion string) {
 	t.Helper()
 
@@ -231,6 +245,7 @@ func TestAddModRouteSuccess(t *testing.T) {
 	}
 
 	workDir := t.TempDir()
+	insertUser(t, 1, common.RoleMemberUser)
 	insertServer(t, 1, "server1", workDir, "Fabric", "1.20.1")
 
 	body := `{"mod_id":"sodium","version_id":"ver-123","auto_update":true}`
@@ -284,6 +299,7 @@ func TestAddModSameModDifferentServers(t *testing.T) {
 
 	workDir1 := t.TempDir()
 	workDir2 := t.TempDir()
+	insertUser(t, 1, common.RoleMemberUser)
 	insertServer(t, 1, "server1", workDir1, "Fabric", "1.20.1")
 	insertServer(t, 1, "server2", workDir2, "Fabric", "1.20.1")
 

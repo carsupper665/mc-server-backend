@@ -47,7 +47,7 @@ func createRootAccountForTest() error {
 			AccessToken: nil,
 		}
 		DB.Create(&rootUser)
-		logger.Infof("Root UserName: %s, Email: %s, Password: %s,", username, userEmail, password)
+		logger.Infof("Root UserName: %s, Email: %s,", username, userEmail)
 	}
 	return nil
 }

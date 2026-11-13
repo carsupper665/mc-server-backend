@@ -52,6 +52,11 @@ export const useAuthStore = defineStore('auth', {
         isLoggedIn: (state) => !!state.user,
         displayName: (state) => state.user?.display_name?.trim() || state.user?.username || '',
         isAdmin: (state) => state.user?.role === 6, // RoleRootUser
+        serverLimit: (state) => state.user?.permissions?.unlimited ? '不限' : state.user?.permissions?.max_server_count ?? '—',
+        canCreateServer: (state) => (count) => {
+            const perm = state.user?.permissions;
+            return !!perm && (perm.unlimited || (perm.can_create_server && count < perm.max_server_count));
+        },
     },
     actions: {
         clearAuthState() {
@@ -88,7 +93,7 @@ export const useAuthStore = defineStore('auth', {
 
                 setStoredUsername(username);
                 setAccessToken(token);
-                await this.fetchUser({ skipRemoteCheck: true });
+                await this.fetchUser();
                 return {
                     status: res.status,
                     data: res.data,
@@ -132,7 +137,7 @@ export const useAuthStore = defineStore('auth', {
                 }
 
                 setAccessToken(token);
-                await this.fetchUser({ skipRemoteCheck: true });
+                await this.fetchUser();
                 return {
                     status: res.status,
                     data: res.data
@@ -167,15 +172,14 @@ export const useAuthStore = defineStore('auth', {
                     throw new Error('Invalid access token payload');
                 }
 
-                if (!options.skipRemoteCheck || !user.display_name) {
-                    const profile = await api.get('/user/me', {
-                        silent: true,
-                        skipAuthRedirect: options.skipAuthRedirect === true
-                    });
-                    user.username = profile.username;
-                    user.display_name = String(profile.display_name || '').trim();
-                    user.role = profile.role;
-                }
+                const profile = await api.get('/user/me', {
+                    silent: true,
+                    skipAuthRedirect: options.skipAuthRedirect === true
+                });
+                user.username = profile.username;
+                user.display_name = String(profile.display_name || '').trim();
+                user.role = profile.role;
+                user.permissions = profile.permissions;
                 this.user = user;
                 return user;
             } catch (err) {

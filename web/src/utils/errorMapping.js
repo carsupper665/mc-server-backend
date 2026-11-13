@@ -3,6 +3,17 @@
  * 將後端技術性或不雅錯誤訊息轉換為友善提示語
  */
 
+// 權限錯誤碼對照表
+const permissionErrorMappings = {
+    PERM_SERVER_LIMIT: '已達伺服器數量上限',
+    PERM_ONLINE_LIMIT: '已達同時運行伺服器數量上限',
+    PERM_MEMORY_LIMIT: '記憶體設定超過單台上限，請調小記憶體',
+    PERM_MOD_LIMIT: '已達模組數量上限',
+    PERM_BACKUP_DENIED: '沒有建立備份的權限',
+    PERM_ROLE_UNDEFINED: '角色未定義，無法執行此操作',
+    PERM_EDIT_ARGS: '只有 Root 可以修改 JVM 參數',
+};
+
 // 精確匹配對照表
 const exactErrorMappings = {
     'user not found': '帳號或密碼錯誤',
@@ -91,6 +102,15 @@ export function sanitizeErrorMessage(errorMessage) {
  * @returns {string} - 友善的錯誤訊息
  */
 export function extractAndSanitizeError(error) {
+    const data = error?.response?.data;
+    const code = data?.code;
+    if (code === 'PERM_MOD_LIMIT' && data.mod_count != null && data.max_mods != null) {
+        return `整合包有 ${data.mod_count} 個模組，超過上限 ${data.max_mods} 個`;
+    }
+    if (Object.hasOwn(permissionErrorMappings, code)) {
+        return permissionErrorMappings[code];
+    }
+
     let rawMessage = '';
 
     if (error?.response?.data?.error) {

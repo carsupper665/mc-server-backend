@@ -8,12 +8,15 @@ import (
 	"go-backend/model"
 	"go-backend/service"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func CreateServer(c *gin.Context) {
@@ -26,6 +29,21 @@ func CreateServer(c *gin.Context) {
 	}
 
 	_, uid_str, uid_uint, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if status, body, blocked := createServerLimitResponse(uid_uint); blocked {
+		c.JSON(status, body)
+		return
+	}
+
+	xms, xmx, status, body := defaultMemoryForUser(uid_uint)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
 
 	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
@@ -36,7 +54,7 @@ func CreateServer(c *gin.Context) {
 
 	sysPath := common.MinecraftServerPath + "/" + serverID
 	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, req.ServerVer,
-		req.ServerType, req.FabricLoader, sysPath)
+		req.ServerType, req.FabricLoader, sysPath, xms, xmx)
 
 	if modelErr != nil {
 		common.LogError(c.Request.Context(), "AddServerToUser error: "+modelErr.Error())
@@ -104,12 +122,265 @@ func ServerDetails(c *gin.Context) {
 	c.JSON(200, gin.H{"server": server})
 }
 
+func EditServerMemory(c *gin.Context) {
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uid, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req struct {
+		Xmx string  `json:"xmx" binding:"required"`
+		Xms *string `json:"xms"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "請求格式錯誤"})
+		return
+	}
+
+	xmx, err := parseMemBytes(req.Xmx)
+	if err != nil || xmx <= 0 {
+		c.JSON(400, gin.H{"error": "Xmx 格式無效"})
+		return
+	}
+
+	var xmsPtr *int64
+	if req.Xms != nil {
+		parsed, err := parseMemBytes(*req.Xms)
+		if err != nil {
+			c.JSON(400, gin.H{"error": "Xms 格式無效"})
+			return
+		}
+		xmsPtr = &parsed
+	}
+
+	server, err := model.GetServerByID(uid, sid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	effectiveXms := server.Xms
+	if xmsPtr != nil {
+		effectiveXms = *xmsPtr
+	}
+	if effectiveXms > xmx {
+		c.JSON(400, gin.H{"error": "Xms 不能大於 Xmx"})
+		return
+	}
+
+	if status, body, blocked := memoryLimitResponse(uid, xmx); blocked {
+		c.JSON(status, body)
+		return
+	}
+
+	if err := model.EditServerMemory(uid, sid, xmx, xmsPtr); err != nil {
+		c.JSON(500, gin.H{"error": "無法更新記憶體設定"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "記憶體設定已更新，下次啟動生效"})
+}
+
+func EditServerArgs(c *gin.Context) {
+	sid := c.Param("server_id")
+	if sid == "" {
+		c.JSON(400, gin.H{"error": "Server ID is required"})
+		return
+	}
+
+	_, _, uid, err := getPayloadAndId(c)
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req struct {
+		Args string `json:"args"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "請求格式錯誤"})
+		return
+	}
+
+	if utf8.RuneCountInString(req.Args) > 1000 {
+		c.JSON(400, gin.H{"error": "JVM 參數不能超過 1000 字"})
+		return
+	}
+
+	_, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+	if !isRoot {
+		c.JSON(http.StatusForbidden, gin.H{"error": "只有 Root 可以修改 JVM 參數", "code": "PERM_EDIT_ARGS"})
+		return
+	}
+
+	if err := model.EditServerArgs(uid, sid, req.Args); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "無法更新 JVM 參數"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "JVM 參數已更新，下次啟動生效"})
+}
+
 func getPayloadAndId(c *gin.Context) (map[string]any, string, uint, error) {
 	payload := c.MustGet("payload").(map[string]any)
 	rawUID := c.MustGet("stringId").(string)
 	uid := c.MustGet("uintId").(uint)
 
 	return payload, rawUID, uid, nil
+}
+
+func userPermission(uid uint) (perm common.Permission, isRoot bool, status int, body gin.H) {
+	role, err := model.GetRole(uid)
+	if err != nil {
+		return common.Permission{}, false, http.StatusInternalServerError, gin.H{"error": "Internal server error"}
+	}
+	if common.IsRoot(role) {
+		return common.Permission{}, true, 0, nil
+	}
+	perm, ok := common.PermFor(role)
+	if !ok {
+		return common.Permission{}, false, http.StatusForbidden, gin.H{"error": "角色未定義", "code": "PERM_ROLE_UNDEFINED"}
+	}
+	return perm, false, 0, nil
+}
+
+func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if !perm.CanCreateServer {
+		return http.StatusForbidden, gin.H{"error": "沒有建立伺服器的權限"}, true
+	}
+	count, err := model.GetServerCount(uid)
+	if err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+	}
+	if count >= perm.MaxServerCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達伺服器數量上限",
+			"code":  "PERM_SERVER_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func onlineLimitResponse(uid uint, onlineCount int) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if int64(onlineCount) >= perm.MaxOnlineCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達同時運行上限",
+			"code":  "PERM_ONLINE_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func defaultMemoryForUser(uid uint) (xms, xmx int64, status int, body gin.H) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return 0, 0, status, body
+	}
+	xms, xmx = common.DefaultServerMemory(perm.ServerMaxMem, isRoot)
+	return xms, xmx, 0, nil
+}
+
+func memoryLimitResponse(uid uint, xmx int64) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if xmx > perm.ServerMaxMem {
+		return http.StatusForbidden, gin.H{
+			"error": "記憶體設定超過上限，請調小記憶體",
+			"code":  "PERM_MEMORY_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func modLimitResponse(uid uint, serverID string) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	count, err := model.GetModCount(serverID)
+	if err != nil {
+		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
+	}
+	// Async installs return before server_mods is written.
+	count += int64(service.CountPendingInstallJobs(serverID))
+	if count >= perm.MaxModsCount {
+		return http.StatusForbidden, gin.H{
+			"error": "已達 mod 數量上限",
+			"code":  "PERM_MOD_LIMIT",
+		}, true
+	}
+	return 0, nil, false
+}
+
+func modpackModLimitResponse(uid uint, modCount int) (status int, body gin.H, blocked bool) {
+	perm, isRoot, status, body := userPermission(uid)
+	if status != 0 {
+		return status, body, true
+	}
+	if isRoot {
+		return 0, nil, false
+	}
+	if int64(modCount) > perm.MaxModsCount {
+		return http.StatusForbidden, gin.H{
+			"error":     fmt.Sprintf("整合包有 %d 個 mod，超過上限 %d 個", modCount, perm.MaxModsCount),
+			"code":      "PERM_MOD_LIMIT",
+			"mod_count": modCount,
+			"max_mods":  perm.MaxModsCount,
+		}, true
+	}
+	return 0, nil, false
+}
+
+func startFailureResponse(err error) (status int, body gin.H) {
+	switch {
+	case errors.Is(err, service.ErrAlreadyRunning):
+		return http.StatusConflict, gin.H{"error": err.Error()}
+	case errors.Is(err, service.ErrNotFound):
+		return http.StatusNotFound, gin.H{"error": err.Error()}
+	default:
+		return http.StatusInternalServerError, gin.H{"error": "Failed to start server"}
+	}
 }
 
 // --------------------Server Controller--------------------
@@ -351,6 +622,10 @@ func (sc *ServerController) Start(c *gin.Context) {
 	serverInfo, err := model.GetServerByID(uintID, sid)
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
 		c.JSON(500, gin.H{"error": "Server start Failed."})
 		return
 	}
@@ -379,16 +654,30 @@ func (sc *ServerController) Start(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Xms cannot be greater than Xmx"})
 		return
 	}
+	if status, body, blocked := memoryLimitResponse(uintID, xmxBytes); blocked {
+		c.JSON(status, body)
+		return
+	}
+
+	if st, _ := sc.svc.Status(sid); st == "running" {
+		c.JSON(http.StatusConflict, gin.H{"error": service.ErrAlreadyRunning.Error()})
+		return
+	}
+	if status, body, blocked := onlineLimitResponse(uintID, sc.svc.OwnerCount(oid)); blocked {
+		c.JSON(status, body)
+		return
+	}
 
 	xmxArg := fmt.Sprintf("%dM", xmxBytes/common.MB)
 	xmsArg := fmt.Sprintf("%dM", xmsBytes/common.MB)
-	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, []string{})
+	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, service.SplitJVMArgs(serverInfo.Args))
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, StartServer error: "+err.Error())
-		if !errors.Is(err, service.ErrAlreadyRunning) && !errors.Is(err, service.ErrNotFound) && !errors.Is(err, service.ErrMaxReached) {
+		status, body := startFailureResponse(err)
+		if status >= 500 {
 			common.LogError(c.Request.Context(), "Log, StartServer error: "+err.Error())
 		}
-		c.JSON(500, gin.H{"error": "Failed to start server"})
+		c.JSON(status, body)
 		return
 	}
 	c.JSON(200, gin.H{"message": "Server started successfully", "server_id": srv.ID})
@@ -508,6 +797,16 @@ func (sc *ServerController) Backup(c *gin.Context) {
 		return
 	}
 
+	perm, isRoot, status, body := userPermission(uintID)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+	if !isRoot && !perm.CanBackUpServer {
+		c.JSON(http.StatusForbidden, gin.H{"error": "沒有建立備份的權限", "code": "PERM_BACKUP_DENIED"})
+		return
+	}
+
 	serverInfo, err := model.GetServerByID(uintID, sid)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to get server information."})
@@ -515,6 +814,14 @@ func (sc *ServerController) Backup(c *gin.Context) {
 	}
 
 	err = sc.svc.Backup(serverInfo.ServerID, serverInfo.SystemPath)
+	if err == nil && !isRoot {
+		var backups []string
+		backups, err = sc.svc.ListBackups(serverInfo.SystemPath)
+		for int64(len(backups)) > perm.MaxBackUpCount && err == nil {
+			err = os.RemoveAll(filepath.Join(serverInfo.SystemPath, "backup", backups[0]))
+			backups = backups[1:]
+		}
+	}
 
 	if err != nil {
 		if !errors.Is(err, service.ErrServerRunning) {
@@ -644,6 +951,10 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 	}
 	if err := model.IsOwner(userId, sid); err != nil {
 		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		return
+	}
+	if status, body, blocked := modLimitResponse(userId, sid); blocked {
+		c.JSON(status, body)
 		return
 	}
 

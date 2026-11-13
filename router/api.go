@@ -58,7 +58,7 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.GET("/start/:server_id", c.Start)
 
 		serverApi.GET("/list/backup/:server_id", c.ListServerBackup)
-		serverApi.GET("/backup/:server_id", c.Backup)
+		serverApi.POST("/backup/:server_id", c.Backup)
 		serverApi.POST("/recover", c.SaveRollBack)
 
 		serverApi.POST("/property/:server_id", c.GetServerProperties)
@@ -69,6 +69,8 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 		serverApi.GET("/usage/:server_id", c.ServerUsage)
 		serverApi.GET("/log/:server_id", c.GetServerLog)
 		serverApi.GET("/details/:server_id", controller.ServerDetails)
+		serverApi.POST("/memory/:server_id", controller.EditServerMemory)
+		serverApi.POST("/args/:server_id", controller.EditServerArgs)
 
 	}
 	serverMod := serverApi.Group("/mod")

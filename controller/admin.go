@@ -30,7 +30,7 @@ type RegisterUserRequest struct {
 	DisplayName string `json:"display_name" binding:"required"`
 	Email       string `json:"email" binding:"required,email"`
 	Password    string `json:"password" binding:"required,min=8"`
-	Role        int    `json:"role" binding:"required"`
+	Role        *int   `json:"role" binding:"required"`
 }
 
 type EditUserReq struct {
@@ -39,7 +39,7 @@ type EditUserReq struct {
 	NewEmail       string `json:"new_email"`
 	NewUsername    string `json:"new_username"`
 	NewDisplayName string `json:"new_display_name"`
-	NewRole        int    `json:"new_role"`
+	NewRole        *int   `json:"new_role"`
 }
 
 type ResetAccReq struct {
@@ -53,12 +53,16 @@ func NewUser(c *gin.Context) {
 		c.JSON(400, gin.H{"message": "Invalid request"})
 		return
 	}
-	if err := model.AddUser(req.Username, req.Email, req.DisplayName, req.Password, req.Role); err != nil {
+	if !common.IsAssignableRole(*req.Role) {
+		c.JSON(400, gin.H{"message": "Invalid role"})
+		return
+	}
+	if err := model.AddUser(req.Username, req.Email, req.DisplayName, req.Password, *req.Role); err != nil {
 		c.JSON(500, gin.H{"message": "Failed to create user", "request_id": common.ReqId(c)})
 		common.Logger.Errorf("Failed to create user: %v", err)
 		return
 	}
-	common.Logger.Infof("New User Add, UserName: %s, Role: %d, Password: %s", req.Username, req.Role, req.Password)
+	common.Logger.Infof("New User Add, UserName: %s, Role: %d", req.Username, *req.Role)
 	c.JSON(200, gin.H{"message": "User created successfully"})
 	return
 }
@@ -69,7 +73,15 @@ func EditUser(c *gin.Context) {
 		c.JSON(400, gin.H{"message": "Invalid request"})
 		return
 	}
-	err := model.UpdateUser(req.UserId, req.NewUsername, req.NewDisplayName, req.NewEmail, req.NewRole)
+	role := -1
+	if req.NewRole != nil {
+		if !common.IsAssignableRole(*req.NewRole) {
+			c.JSON(400, gin.H{"message": "Invalid role"})
+			return
+		}
+		role = *req.NewRole
+	}
+	err := model.UpdateUser(req.UserId, req.NewUsername, req.NewDisplayName, req.NewEmail, role)
 	if err != nil {
 		c.JSON(500, gin.H{"message": "Failed to update user", "request_id": c.Request.Context().Value(common.RequestIdKey)})
 		common.Logger.Errorf("Failed to update user: %v", err)
