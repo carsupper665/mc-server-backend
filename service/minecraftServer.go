@@ -89,7 +89,11 @@ func (s *ServerService) DelServer(sid, workDir string) error {
 }
 
 func (s *ServerService) ListBackups(workDir string) ([]string, error) {
-	return s.mgr.ServerSaveList(workDir)
+	backups, err := s.mgr.ServerSaveList(workDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []string{}, nil
+	}
+	return backups, err
 }
 
 func (s *ServerService) DeleteMod(sid, modID, modPath string) error {

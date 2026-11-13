@@ -13,12 +13,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
 
 var (
+	ErrInvalidBackup      = errors.New("invalid backup")
+	ErrNoWorld            = errors.New("伺服器尚未產生世界，請先啟動一次")
+	ErrInvalidBackupName  = errors.New("invalid backup name")
 	ErrAlreadyRunning     = errors.New("server already running")
 	ErrNotFound           = errors.New("server Not Found")
 	ErrMaxReached         = errors.New("user has reached the maximum number of servers")
@@ -319,7 +323,13 @@ func (sm *ServerManager) CleanUpHook() *common.ErrCleanUpStack {
 	return nil
 }
 
+var backupNamePattern = regexp.MustCompile(`^[0-9]{8}_[0-9]{6}$`)
+
 func (sm *ServerManager) ServerSaveRollBack(sid, fileName, workDir string) error {
+	if fileName == "" || fileName == "." || fileName == ".." || strings.ContainsAny(fileName, `/\`) || filepath.Base(fileName) != fileName || !backupNamePattern.MatchString(fileName) {
+		return ErrInvalidBackupName
+	}
+
 	sm.mu.RLock()
 	srv, exists := sm.servers[sid]
 	sm.mu.RUnlock()
@@ -328,25 +338,72 @@ func (sm *ServerManager) ServerSaveRollBack(sid, fileName, workDir string) error
 		return ErrServerRunning
 	}
 
-	src := filepath.Join(workDir, "backup", fileName)
-	if _, err := os.ReadDir(src); err != nil {
-		return os.ErrNotExist
+	backupDir := filepath.Join(workDir, "backup")
+	src := filepath.Join(backupDir, fileName)
+	rel, err := filepath.Rel(backupDir, src)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return ErrInvalidBackupName
+	}
+	// Do not let a symlink turn a single path segment into an external path.
+	for _, path := range []string{backupDir, src} {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return ErrInvalidBackupName
+		}
+	}
+
+	level, err := os.Lstat(filepath.Join(src, "level.dat"))
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrInvalidBackup
+	}
+	if err != nil {
+		return err
+	}
+	if !level.Mode().IsRegular() {
+		return ErrInvalidBackup
 	}
 
 	dst := filepath.Join(workDir, "world")
-
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	if errRemove := os.RemoveAll(dst); errRemove != nil {
-		return errRemove
+	stage, err := os.MkdirTemp(workDir, ".recover-")
+	if err != nil {
+		return err
+	}
+	preserveStage := false
+	defer func() {
+		if !preserveStage {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	next := filepath.Join(stage, "world")
+	if err := common.Copy(src, next); err != nil {
+		return err
 	}
 
-	if errCopy := common.Copy(src, dst); errCopy != nil {
-		return errCopy
+	old := filepath.Join(stage, "old-world")
+	hadWorld := true
+	if err := os.Rename(dst, old); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		hadWorld = false
 	}
-
-	return nil
+	if err := os.Rename(next, dst); err != nil {
+		if hadWorld {
+			if restoreErr := os.Rename(old, dst); restoreErr != nil {
+				// Keep the original world on disk if recovery itself fails.
+				preserveStage = true
+				return errors.Join(err, fmt.Errorf("original world retained at %s: %w", old, restoreErr))
+			}
+		}
+		return err
+	}
+	return os.RemoveAll(stage)
 }
 
 func (sm *ServerManager) countByOwner(oid string) int {
@@ -539,11 +596,31 @@ func (sm *ServerManager) BackUp(sid, workDir string) error {
 		return ErrServerRunning
 	}
 
-	src := workDir + "/world"
-	dst := workDir + "/backup/" + time.Now().Format("20060102_150405")
+	src := filepath.Join(workDir, "world")
+	info, err := os.Stat(src)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNoWorld
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return ErrNoWorld
+	}
 
-	return common.Copy(src, dst)
-
+	backupDir := filepath.Join(workDir, "backup")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return err
+	}
+	dst := filepath.Join(backupDir, time.Now().Format("20060102_150405"))
+	// Never overwrite (or clean up) an earlier backup from the same second.
+	if err := os.Mkdir(dst, 0755); err != nil {
+		return err
+	}
+	if err := common.Copy(src, dst); err != nil {
+		return errors.Join(err, os.RemoveAll(dst))
+	}
+	return nil
 }
 
 func (sm *ServerManager) cleanupExpired() {
