@@ -83,7 +83,7 @@ import (
 
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		uid, exists := c.Get("user")
+		uid, exists := c.Get("uintId")
 
 		if !exists {
 			c.AbortWithStatus(401)
@@ -91,17 +91,8 @@ func AdminOnly() gin.HandlerFunc {
 		}
 
 		role, err := model.GetRole(uid.(uint))
-		if err != nil || role != 6 {
+		if err != nil || !common.IsRoot(role) {
 			c.AbortWithStatusJSON(403, gin.H{"error": "forbidden"})
-			return
-		}
-
-		adminToken := c.Request.Header.Get("A-OP-Token")
-
-		// 驗證admin token
-		ok := common.ValidateUser(adminToken, c.ClientIP())
-		if !ok {
-			c.AbortWithStatusJSON(401, gin.H{"message": "Please verify your identity before continuing this operation.", "code": "REFLASH_TOKEN"})
 			return
 		}
 

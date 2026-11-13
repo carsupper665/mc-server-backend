@@ -3,27 +3,9 @@ package controller
 import (
 	"go-backend/common"
 	"go-backend/model"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
-
-type AdminVerify struct {
-	Code int
-	Aud  string
-	Exp  time.Time
-}
-
-type AdminVerifyStorage struct {
-	Cache map[uint]AdminVerify // userId uint
-	mu    sync.RWMutex
-}
-
-func reSetAdminToken(userId uint) error {
-	// 生成新的 admin token
-	return nil
-}
 
 type RegisterUserRequest struct {
 	Username    string `json:"username" binding:"required"`
