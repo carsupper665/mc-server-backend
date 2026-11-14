@@ -24,7 +24,7 @@ type UserMinecraftServer struct {
 	InstallSessionID string `gorm:"index;size:50" json:"ins_ses_id,omitempty"`
 	InstallStatus    string `gorm:"size:20" json:"install_status,omitempty"`
 	InstallDetails   string `gorm:"type:text" json:"-"`
-	SystemPath       string `gorm:"size:255;not null" json:"system_path"`
+	SystemPath       string `gorm:"size:255;not null" json:"-"`
 	// 關聯
 	InstalledMods []ServerMod `gorm:"foreignKey:ServerID;references:ServerID"`
 
@@ -64,7 +64,21 @@ func IsOwner(userID uint, serverID string) error {
 }
 
 func RemoveServerByServerID(userID uint, serverID string) error {
-	return DB.Where("owner_id = ? AND server_id = ?", userID, serverID).Delete(&UserMinecraftServer{}).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&UserMinecraftServer{}).
+			Where("owner_id = ? AND server_id = ?", userID, serverID).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		if err := tx.Where("server_id = ?", serverID).Delete(&ServerMod{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("owner_id = ? AND server_id = ?", userID, serverID).Delete(&UserMinecraftServer{}).Error
+	})
 }
 
 func GetServerByID(userID uint, serverID string) (*UserMinecraftServer, error) {

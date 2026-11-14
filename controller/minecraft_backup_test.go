@@ -157,7 +157,7 @@ func TestRollingBackup(t *testing.T) {
 
 func TestRecoverBackupName(t *testing.T) {
 	setupCreateLimitDB(t)
-	user := createLimitUser(t, common.RoleGuestUser)
+	user := createLimitUser(t, common.RoleVipMemberUser)
 	seedOwnedServer(t, user.ID, "recover-server", 0, 0)
 	workDir := t.TempDir()
 	if err := model.DB.Model(&model.UserMinecraftServer{}).Where("server_id = ?", "recover-server").Update("system_path", workDir).Error; err != nil {
@@ -229,5 +229,121 @@ func TestBackupAndRecoverInvalidWorldResponses(t *testing.T) {
 	}
 	if w.Code != 400 || body["code"] != "INVALID_BACKUP" {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecoverBackupPermission(t *testing.T) {
+	for _, role := range []int{common.RoleGuestUser, common.RoleMemberUser, common.RoleExternalMemberUser, common.RoleVipMemberUser, common.RoleRootUser, 99} {
+		t.Run(fmt.Sprintf("role_%d", role), func(t *testing.T) {
+			setupCreateLimitDB(t)
+			user := createLimitUser(t, role)
+			seedOwnedServer(t, user.ID, "recover-server", 0, 0)
+			workDir := t.TempDir()
+			if err := model.DB.Model(&model.UserMinecraftServer{}).Where("server_id = ?", "recover-server").Update("system_path", workDir).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(workDir, "world"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(workDir, "world", "level.dat"), []byte("current world"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			backup := filepath.Join(workDir, "backup", "20261114_120000")
+			if err := os.MkdirAll(backup, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(backup, "level.dat"), []byte("saved world"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			sc := NewServerController(service.NewServerService(&service.ServerManager{}))
+			r := testUIDRouter(t, "/recover", sc.SaveRollBack)
+			w := postJSONAs(r, "/recover", user.ID, map[string]string{"server_id": "recover-server", "file_name": "20261114_120000"})
+			perm, defined := common.PermFor(role)
+			if !common.IsRoot(role) && (!defined || !perm.CanBackUpServer) {
+				var body map[string]any
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				code := "PERM_BACKUP_DENIED"
+				if !defined {
+					code = "PERM_ROLE_UNDEFINED"
+				}
+				if w.Code != http.StatusForbidden || body["code"] != code {
+					t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+				}
+				data, err := os.ReadFile(filepath.Join(workDir, "world", "level.dat"))
+				if err != nil || string(data) != "current world" {
+					t.Fatalf("world changed: %q err=%v", data, err)
+				}
+				return
+			}
+			if w.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			data, err := os.ReadFile(filepath.Join(workDir, "world", "level.dat"))
+			if err != nil || string(data) != "saved world" {
+				t.Fatalf("world=%q err=%v", data, err)
+			}
+		})
+	}
+}
+
+func TestRecoverMissingAndUnownedServer(t *testing.T) {
+	setupCreateLimitDB(t)
+	owner := createLimitUser(t, common.RoleVipMemberUser)
+	other := createLimitUser(t, common.RoleRootUser)
+	seedOwnedServer(t, owner.ID, "recover-server", 0, 0)
+	workDir := t.TempDir()
+	if err := model.DB.Model(&model.UserMinecraftServer{}).Where("server_id = ?", "recover-server").Update("system_path", workDir).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workDir, "world"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "world", "level.dat"), []byte("current world"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(workDir, "backup", "20261114_120000")
+	if err := os.MkdirAll(backup, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "level.dat"), []byte("saved world"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sc := NewServerController(service.NewServerService(&service.ServerManager{}))
+	r := testUIDRouter(t, "/recover", sc.SaveRollBack)
+	for _, tc := range []struct {
+		name string
+		uid  uint
+		sid  string
+	}{
+		{"other owner", other.ID, "recover-server"},
+		{"missing", owner.ID, "missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postJSONAs(r, "/recover", tc.uid, map[string]string{"server_id": tc.sid, "file_name": "20261114_120000"})
+			if w.Code != 404 || w.Body.String() != `{"error":"Server not found"}` {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			data, err := os.ReadFile(filepath.Join(workDir, "world", "level.dat"))
+			if err != nil || string(data) != "current world" {
+				t.Fatalf("world changed: %q err=%v", data, err)
+			}
+		})
+	}
+	if err := model.DB.Migrator().DropTable(&model.UserMinecraftServer{}); err != nil {
+		t.Fatal(err)
+	}
+	w := postJSONAs(r, "/recover", owner.ID, map[string]string{"server_id": "recover-server", "file_name": "20261114_120000"})
+	if w.Code != 500 || w.Body.String() != `{"error":"Internal server error"}` {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workDir, "world", "level.dat"))
+	if err != nil || string(data) != "current world" {
+		t.Fatalf("world changed: %q err=%v", data, err)
+	}
+	saved, err := os.ReadFile(filepath.Join(backup, "level.dat"))
+	if err != nil || string(saved) != "saved world" {
+		t.Fatalf("backup changed: %q err=%v", saved, err)
 	}
 }

@@ -129,6 +129,7 @@ it.each([
     ['NO_WORLD', '伺服器尚未產生世界，請先啟動一次'],
     ['INVALID_BACKUP', '備份資料無效，無法還原世界'],
     ['INVALID_BACKUP_NAME', '備份名稱無效，請重新選擇備份'],
-])('maps backup error code %s', (code, message) => {
+    ['SERVER_RUNNING', '請先停止伺服器'],
+])('maps error code %s', (code, message) => {
     expect(extractAndSanitizeError({ response: { data: { code, error: 'technical error' } } })).toBe(message);
 });

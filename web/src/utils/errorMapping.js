@@ -13,6 +13,7 @@ const permissionErrorMappings = {
     PERM_MEMORY_LIMIT: '記憶體設定超過單台上限，請調小記憶體',
     PERM_MOD_LIMIT: '已達模組數量上限',
     PERM_BACKUP_DENIED: '沒有建立備份的權限',
+    SERVER_RUNNING: '請先停止伺服器',
     PERM_ROLE_UNDEFINED: '角色未定義，無法執行此操作',
     PERM_EDIT_ARGS: '只有 Root 可以修改 JVM 參數',
 };
