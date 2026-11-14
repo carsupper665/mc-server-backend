@@ -202,7 +202,7 @@ defineExpose({ fetchBackups });
         <div v-else-if="backups.length === 0" class="empty-backups">No backups found</div>
         <div v-for="b in backups" :key="b.name" class="backup-item">
           <n-text class="backup-name">{{ b.name }}</n-text>
-          <n-button size="tiny" ghost type="warning" @click="openRecoverModal(b)"> 還原 </n-button>
+          <n-button v-if="auth.user?.permissions?.can_back_up_server" size="tiny" ghost type="warning" @click="openRecoverModal(b)"> 還原 </n-button>
         </div>
       </div>
     </n-card>

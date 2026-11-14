@@ -500,9 +500,8 @@ func (sc *ServerController) ServerUsage(c *gin.Context) {
 	}
 
 	if err := model.IsOwner(uintId, serverID); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		serverLookupError(c, err)
 		return
-
 	}
 
 	usage, err := sc.svc.GetServerUsage(serverID)
@@ -521,7 +520,7 @@ func (sc *ServerController) ServerUsage(c *gin.Context) {
 	usageResponse.MemoryUsage = usage.VMS
 	usageResponse.Threads = usage.Threads
 
-	c.JSON(200, gin.H{"usage": usage})
+	c.JSON(200, gin.H{"usage": usageResponse})
 }
 
 func (sc *ServerController) SaveRollBack(c *gin.Context) {
@@ -539,15 +538,25 @@ func (sc *ServerController) SaveRollBack(c *gin.Context) {
 		return
 	}
 
+	perm, isRoot, status, body := userPermission(uintID)
+	if status != 0 {
+		c.JSON(status, body)
+		return
+	}
+	if !isRoot && !perm.CanBackUpServer {
+		c.JSON(http.StatusForbidden, gin.H{"error": "沒有建立備份的權限", "code": "PERM_BACKUP_DENIED"})
+		return
+	}
+
 	if err := model.IsOwner(uintID, req.ServerID); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		serverLookupError(c, err)
 		return
 	}
 
 	serverInfo, err := model.GetServerByID(uintID, req.ServerID)
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, GetServerByID error: "+err.Error())
-		c.JSON(500, gin.H{"error": "Server start Failed."})
+		serverLookupError(c, err)
 		return
 	}
 
@@ -989,6 +998,10 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 	}
 	err = sc.svc.DelServer(serverID, serverData.SystemPath)
 	if err != nil {
+		if errors.Is(err, service.ErrServerRunning) {
+			c.JSON(http.StatusConflict, gin.H{"error": "請先停止伺服器", "code": "SERVER_RUNNING"})
+			return
+		}
 		common.LogDebug(c.Request.Context(), "DelServer error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to delete server files"})
 		return

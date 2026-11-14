@@ -39,6 +39,29 @@ it.each([
     wrapper.unmount();
 });
 
+it.each([
+    ['missing profile', null, false],
+    ['missing permissions', {}, false],
+    ['denied', { permissions: { can_back_up_server: false } }, false],
+    ['allowed', { permissions: { can_back_up_server: true } }, true],
+    ['Root', { permissions: { unlimited: true, can_back_up_server: true } }, true],
+])('shows restore only when backup is allowed: %s', async (_, user, allowed) => {
+    api.get.mockResolvedValue({ backups: ['20261114_120000'] });
+    const pinia = createPinia();
+    useAuthStore(pinia).user = user;
+    const wrapper = shallowMount(ServerBackups, {
+        props: { serverId: 'test' },
+        global: {
+            plugins: [pinia],
+            stubs: { Card: { template: '<div><slot name="header-extra" /><slot /></div>' } },
+        },
+    });
+    await flushPromises();
+    const restores = wrapper.findAll('.backup-item').flatMap(item => item.findAllComponents({ name: 'Button' }).filter(button => button.attributes('type') === 'warning'));
+    expect(restores).toHaveLength(allowed ? 1 : 0);
+    wrapper.unmount();
+});
+
 it('aborts immediately on stop failure without creating a backup or claiming restart', async () => {
     const wrapper = shallowMount(ServerBackups, { props: {
         serverId: 'test', isServerRunning: true,

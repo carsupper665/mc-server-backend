@@ -28,7 +28,7 @@ func setupCreateLimitDB(t *testing.T) {
 		sqlDB, _ := db.DB()
 		sqlDB.Close()
 	})
-	if err := db.AutoMigrate(&model.User{}, &model.UserMinecraftServer{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.UserMinecraftServer{}, &model.Mod{}, &model.ModVersion{}, &model.ServerMod{}); err != nil {
 		t.Fatal(err)
 	}
 }
