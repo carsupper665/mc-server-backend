@@ -71,6 +71,11 @@ describe('errorMapping', () => {
                 .toBe('只有 Root 可以修改 JVM 參數');
         });
 
+        it('maps ADMIN_FGF_MANAGED', () => {
+            expect(extractAndSanitizeError({ response: { data: { code: 'ADMIN_FGF_MANAGED' } } }))
+                .toBe('FGF 帳號的角色與顯示名稱由 FGF 同步，無法手動修改');
+        });
+
         it('falls back to message sanitization for an unknown code', () => {
             expect(extractAndSanitizeError({ response: { data: { code: 'PERM_UNKNOWN', error: 'permission denied' } } }))
                 .toBe('權限不足');
