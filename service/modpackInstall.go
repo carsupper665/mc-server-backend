@@ -255,6 +255,12 @@ func (s *ModpackSession) install(ctx context.Context, pack *MRPack, workDir, loa
 				return err
 			}
 			if err := s.cacheMod(ctx, MRPackFile{Path: name, Hashes: map[string]string{"sha512": fmt.Sprintf("%x", hash.Sum(nil))}}); err != nil {
+				// Keep every installed jar in the quota even when no project is known.
+				// A local identifier also lets existing mod endpoints address it safely.
+				filename := strings.TrimPrefix(name, "mods/")
+				if err := model.AddModToServer(s.ServerID, model.LocalModID(filename), "", filename, false); err != nil {
+					return fmt.Errorf("record override mod %s: %w", filename, err)
+				}
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}

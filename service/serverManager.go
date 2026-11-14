@@ -743,6 +743,9 @@ func (sm *ServerManager) DeleteMod(sid, modPath string) error {
 }
 
 func (sm *ServerManager) UpdateMod(sid, modId, workDir, oldModFile, modLoader, gameVersion string, autoUpdate bool) error {
+	if modId == "" || model.IsLocalModID(modId) {
+		return model.ErrModMetadataUnavailable
+	}
 	// TODO 類 transaction 機制 錯誤要負責復原所有東西 回到發生前
 	if running := sm.isRunning(sid); running {
 		return ErrServerRunning

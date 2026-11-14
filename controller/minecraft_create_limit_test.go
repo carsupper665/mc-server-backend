@@ -1,9 +1,13 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"go-backend/common"
@@ -13,7 +17,7 @@ import (
 
 func setupCreateLimitDB(t *testing.T) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "test.db")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,5 +113,98 @@ func TestCreateServerLimitUndefinedRole(t *testing.T) {
 	}
 	if body["code"] == "PERM_SERVER_LIMIT" {
 		t.Fatal("undefined role must not use PERM_SERVER_LIMIT")
+	}
+}
+
+func TestCreateServerConcurrentReservation(t *testing.T) {
+	setupCreateLimitDB(t)
+	sqlDB, _ := model.DB.DB()
+	sqlDB.SetMaxOpenConns(1)
+	user := createLimitUser(t, common.RoleGuestUser)
+	started, finish := make(chan struct{}, 2), make(chan struct{})
+	previous := createMinecraftServer
+	createMinecraftServer = func(_, _, _, _, _ string) (string, error) {
+		started <- struct{}{}
+		<-finish
+		return "created", nil
+	}
+	t.Cleanup(func() { createMinecraftServer = previous })
+	r := testUIDRouter(t, "/create", CreateServer)
+	first, second := make(chan *httptest.ResponseRecorder, 1), make(chan *httptest.ResponseRecorder, 1)
+	go func() { first <- postJSONAs(r, "/create", user.ID, map[string]any{}) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first create did not start")
+	}
+	go func() { second <- postJSONAs(r, "/create", user.ID, map[string]any{}) }()
+	select {
+	case w := <-second:
+		second = nil
+		if w.Code != 403 || !strings.Contains(w.Body.String(), "PERM_SERVER_LIMIT") {
+			t.Errorf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	case <-started:
+		t.Error("second request passed the limit while the first was creating")
+	case <-time.After(5 * time.Second):
+		t.Error("second request blocked behind download")
+	}
+	close(finish)
+	if w := <-first; w.Code != 200 {
+		t.Fatalf("first: status=%d body=%s", w.Code, w.Body.String())
+	}
+	// Drain the second request before restoring globals and closing the DB.
+	if second != nil {
+		<-second
+	}
+}
+
+func TestCreateServerFailureReleasesReservation(t *testing.T) {
+	setupCreateLimitDB(t)
+	user := createLimitUser(t, common.RoleGuestUser)
+	previous := createMinecraftServer
+	defer func() { createMinecraftServer = previous }()
+	attempts := 0
+	createMinecraftServer = func(_, _, _, _, _ string) (string, error) {
+		attempts++
+		if attempts == 1 {
+			return "", errors.New("download failed")
+		}
+		return "retry", nil
+	}
+	r := testUIDRouter(t, "/create", CreateServer)
+	if w := postJSONAs(r, "/create", user.ID, map[string]any{}); w.Code != 500 {
+		t.Fatalf("first: %d %s", w.Code, w.Body.String())
+	}
+	if w := postJSONAs(r, "/create", user.ID, map[string]any{}); w.Code != 200 {
+		t.Fatalf("retry: %d %s", w.Code, w.Body.String())
+	}
+	if _, _, blocked := createServerLimitResponse(user.ID); !blocked {
+		t.Fatal("persisted server must count after reservation released")
+	}
+}
+
+func TestServerCreationReservationsArePerUserAndRootBypasses(t *testing.T) {
+	setupCreateLimitDB(t)
+	guest := createLimitUser(t, common.RoleGuestUser)
+	member := createLimitUser(t, common.RoleMemberUser)
+	root := createLimitUser(t, common.RoleRootUser)
+	release, status, body := reserveServerCreation(guest.ID)
+	if status != 0 {
+		t.Fatalf("guest reservation: %d %v", status, body)
+	}
+	defer release()
+	for _, uid := range []uint{member.ID, root.ID, root.ID} {
+		releaseOther, status, body := reserveServerCreation(uid)
+		if status != 0 {
+			t.Fatalf("other user %d: %d %v", uid, status, body)
+		}
+		defer releaseOther()
+	}
+	serverCreationMu.Lock()
+	rootPending := pendingServerCreations[root.ID]
+	serverCreationMu.Unlock()
+	if rootPending != 0 {
+		t.Fatalf("root reserved %d slots", rootPending)
 	}
 }

@@ -12,12 +12,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+var createMinecraftServer = service.CreateServer
 
 func CreateServer(c *gin.Context) {
 	var req service.CreateServerRequest
@@ -34,10 +37,13 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	if status, body, blocked := createServerLimitResponse(uid_uint); blocked {
+	release, status, body := reserveServerCreation(uid_uint)
+	if status != 0 {
 		c.JSON(status, body)
 		return
 	}
+
+	defer release()
 
 	xms, xmx, status, body := defaultMemoryForUser(uid_uint)
 	if status != 0 {
@@ -45,7 +51,7 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	serverID, err := service.CreateServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
+	serverID, err := createMinecraftServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
 	if err != nil {
 		common.LogError(c.Request.Context(), "CreateMinecraftServer error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to create server"})
@@ -101,7 +107,7 @@ func MyServers(c *gin.Context) {
 func ServerDetails(c *gin.Context) {
 	sid := c.Param("server_id")
 	if sid == "" {
-		c.JSON(404, gin.H{"error": "Server Not Found"})
+		c.JSON(404, gin.H{"error": "Server not found"})
 		return
 	}
 	_, _, uid, err := getPayloadAndId(c)
@@ -110,7 +116,7 @@ func ServerDetails(c *gin.Context) {
 		return
 	}
 	if err := model.IsOwner(uid, sid); err != nil {
-		c.JSON(403, gin.H{"error": "Forbidden"})
+		serverLookupError(c, err)
 		return
 	}
 
@@ -120,6 +126,15 @@ func ServerDetails(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"server": server})
+}
+
+// Hide whether a server exists when it does not belong to the caller.
+func serverLookupError(c *gin.Context, err error) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 }
 
 func EditServerMemory(c *gin.Context) {
@@ -163,7 +178,7 @@ func EditServerMemory(c *gin.Context) {
 	server, err := model.GetServerByID(uid, sid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			c.JSON(404, gin.H{"error": "Server not found"})
 			return
 		}
 		c.JSON(500, gin.H{"error": "Internal server error"})
@@ -230,7 +245,7 @@ func EditServerArgs(c *gin.Context) {
 
 	if err := model.EditServerArgs(uid, sid, req.Args); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(403, gin.H{"error": "只能修改自己的伺服器"})
+			c.JSON(404, gin.H{"error": "Server not found"})
 			return
 		}
 		c.JSON(500, gin.H{"error": "無法更新 JVM 參數"})
@@ -263,7 +278,43 @@ func userPermission(uid uint) (perm common.Permission, isRoot bool, status int, 
 	return perm, false, 0, nil
 }
 
+// serverCreationMu protects the count check and per-user reservations. Never hold
+// it during downloads. Import uses it only for its final check and initial DB insert.
+var serverCreationMu sync.Mutex
+var pendingServerCreations = make(map[uint]int64)
+
+func reserveServerCreation(uid uint) (release func(), status int, body gin.H) {
+	serverCreationMu.Lock()
+	defer serverCreationMu.Unlock()
+	if status, body, blocked := createServerLimitResponseLocked(uid); blocked {
+		return nil, status, body
+	}
+	role, err := model.GetRole(uid)
+	if err != nil {
+		return nil, http.StatusInternalServerError, gin.H{"error": "Internal server error"}
+	}
+	if common.IsRoot(role) {
+		return func() {}, 0, nil
+	}
+	pendingServerCreations[uid]++
+	return func() {
+		serverCreationMu.Lock()
+		defer serverCreationMu.Unlock()
+		pendingServerCreations[uid]--
+		if pendingServerCreations[uid] == 0 {
+			delete(pendingServerCreations, uid)
+		}
+	}, 0, nil
+}
+
 func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) {
+	serverCreationMu.Lock()
+	defer serverCreationMu.Unlock()
+	return createServerLimitResponseLocked(uid)
+}
+
+// Caller must hold serverCreationMu.
+func createServerLimitResponseLocked(uid uint) (status int, body gin.H, blocked bool) {
 	perm, isRoot, status, body := userPermission(uid)
 	if status != 0 {
 		return status, body, true
@@ -278,7 +329,7 @@ func createServerLimitResponse(uid uint) (status int, body gin.H, blocked bool) 
 	if err != nil {
 		return http.StatusInternalServerError, gin.H{"error": "Internal server error"}, true
 	}
-	if count >= perm.MaxServerCount {
+	if count+pendingServerCreations[uid] >= perm.MaxServerCount {
 		return http.StatusForbidden, gin.H{
 			"error": "已達伺服器數量上限",
 			"code":  "PERM_SERVER_LIMIT",
@@ -979,7 +1030,7 @@ func (sc *ServerController) AddMod(c *gin.Context) {
 		return
 	}
 	if err := model.IsOwner(userId, sid); err != nil {
-		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		serverLookupError(c, err)
 		return
 	}
 	if status, body, blocked := modLimitResponse(userId, sid); blocked {
@@ -1150,7 +1201,7 @@ func (sc *ServerController) ToggleMod(c *gin.Context) {
 	}
 	err = model.IsOwner(userId, serverID)
 	if err != nil {
-		c.JSON(400, gin.H{"error": "Not the owner of the server"})
+		serverLookupError(c, err)
 		return
 	}
 
@@ -1206,7 +1257,7 @@ func (sc *ServerController) ListMod(c *gin.Context) {
 
 	if err := model.IsOwner(userId, serverID); err != nil {
 		logger.Errorf("List mod error, \n at model IsOwner %v", err)
-		c.JSON(400, gin.H{"error": "Not the owner of the server, or server does not exist"})
+		serverLookupError(c, err)
 		return
 	}
 	var modData []model.ServerMod
@@ -1233,6 +1284,9 @@ func (sc *ServerController) ListMod(c *gin.Context) {
 		name := sm.Mod.Name
 		if name == "" {
 			name = sm.ModID
+			if model.IsLocalModID(sm.ModID) || name == "" {
+				name = sm.Filename
+			}
 		}
 		version := sm.Version.VersionNumber
 		if version == "" {
@@ -1279,10 +1333,14 @@ func (sc *ServerController) DelMod(c *gin.Context) {
 
 	err = model.IsOwner(userId, serverID)
 	if err != nil {
-		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		serverLookupError(c, err)
 		return
 	}
 	serverData, err := model.GetServerByID(userId, serverID)
+	if err != nil {
+		serverLookupError(c, err)
+		return
+	}
 	fileName := model.ModFileName(serverID, modID)
 	modPath := filepath.Join(serverData.SystemPath, "mods", fileName)
 
@@ -1315,7 +1373,7 @@ func (sc *ServerController) UpdateMod(c *gin.Context) {
 
 	err = model.IsOwner(userId, serverID)
 	if err != nil {
-		c.JSON(403, gin.H{"error": "Not the owner of the server"})
+		serverLookupError(c, err)
 		return
 	}
 	serverData, err := model.GetServerByID(userId, serverID)
@@ -1328,6 +1386,11 @@ func (sc *ServerController) UpdateMod(c *gin.Context) {
 	if err != nil {
 		logger.Errorf("Update mod error, \n at model GetServerMod %v", err)
 		c.JSON(500, gin.H{"error": "Failed to retrieve server information"})
+		return
+	}
+
+	if modInf.ModID == "" || model.IsLocalModID(modInf.ModID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": model.ErrModMetadataUnavailable.Error()})
 		return
 	}
 

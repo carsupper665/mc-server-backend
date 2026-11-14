@@ -1,8 +1,10 @@
 package model
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go-backend/common"
 	"strings"
 	"time"
@@ -12,7 +14,7 @@ import (
 
 // Mod 模組基本資訊表(從 Modrinth 快取)
 type Mod struct {
-	ModID       string `gorm:"primaryKey;size:50" json:"mod_id"` // Modrinth project_id
+	ModID       string `gorm:"primaryKey;size:50" json:"mod_id"` // Modrinth project_id, or local: identifier for unknown metadata
 	Slug        string `gorm:"uniqueIndex;size:100" json:"slug"`
 	Name        string `gorm:"size:200;not null" json:"name"`
 	Summary     string `gorm:"type:text" json:"summary"`
@@ -116,6 +118,20 @@ type ServerMod struct {
 	LatestVersion *ModVersion         `gorm:"foreignKey:LatestVersionID;references:VersionID" json:"latest_version,omitempty"`
 }
 
+// LocalModID identifies an installed file with no Modrinth project metadata.
+// The reserved prefix cannot be a Modrinth project ID. Hashing keeps filenames
+// (including subdirectories) distinct within the existing 50-character index.
+func LocalModID(filename string) string {
+	sum := sha256.Sum256([]byte(filename))
+	return fmt.Sprintf("local:%x", sum[:20])
+}
+
+func IsLocalModID(modID string) bool {
+	return strings.HasPrefix(modID, "local:")
+}
+
+var ErrModMetadataUnavailable = errors.New("Modrinth metadata unavailable; cannot update this mod")
+
 type InstalledModSyncTarget struct {
 	ModID     string `json:"mod_id"`
 	MCVersion string `json:"mc_version"`
@@ -130,6 +146,7 @@ func ListInstalledModSyncTargets() ([]InstalledModSyncTarget, error) {
 		Joins("JOIN user_minecraft_servers AS ums ON ums.server_id = sm.server_id").
 		Where("sm.status IN ?", []string{"installed", "disabled"}).
 		Where("sm.mod_id <> ''").
+		Where("sm.mod_id NOT LIKE ?", "local:%").
 		Where("ums.mc_version <> ''").
 		Where("ums.mod_loader <> ''").
 		Where("LOWER(ums.mod_loader) <> ?", "vanilla").
@@ -295,6 +312,9 @@ func DeleteMod(serverID, modID string) error {
 }
 
 func IsUptodate(sid, modID string) (IsLast bool, VerId string, err error) {
+	if modID == "" || IsLocalModID(modID) {
+		return false, "", ErrModMetadataUnavailable
+	}
 	var serverMod ServerMod
 
 	// 版本 最後更新時間 大於3天就去Modrinth更新(更新mod, modversion 兩個表) 再取 Modrinth 的 版本號1

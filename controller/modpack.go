@@ -75,7 +75,16 @@ func ImportModpack(c *gin.Context) {
 		c.JSON(status, body)
 		return
 	}
+	// StartModpackInstall persists the server before returning. Serialize its final
+	// check and insert with normal creation reservations; do not reserve it twice.
+	serverCreationMu.Lock()
+	if status, body, blocked := createServerLimitResponseLocked(owner); blocked {
+		serverCreationMu.Unlock()
+		c.JSON(status, body)
+		return
+	}
 	session, err := service.StartModpackInstall(owner, pack, file, xms, xmx)
+	serverCreationMu.Unlock()
 	if err != nil {
 		logger.Errorf("Fail to Start Mod Pack Install Error: %v, req_id: %v", err, reqId)
 		c.JSON(400, gin.H{"error": "Start Install Error", "request_id": reqId})

@@ -1,7 +1,11 @@
 package controller
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,5 +61,61 @@ func TestImportModpackRejectsAtServerLimitBeforeUpload(t *testing.T) {
 	}
 	if count != perm.MaxServerCount {
 		t.Fatalf("DB records changed: got %d want %d", count, perm.MaxServerCount)
+	}
+}
+
+// Consume the final slot after ImportModpack's initial check, during body upload.
+type reserveDuringUpload struct {
+	io.Reader
+	reserve func()
+}
+
+func (r *reserveDuringUpload) Read(p []byte) (int, error) {
+	if r.reserve != nil {
+		r.reserve()
+		r.reserve = nil
+	}
+	return r.Reader.Read(p)
+}
+
+func TestImportModpackRechecksReservationsAfterUpload(t *testing.T) {
+	setupCreateLimitDB(t)
+	user := createLimitUser(t, common.RoleGuestUser)
+	var body bytes.Buffer
+	archive := zip.NewWriter(&body)
+	index, err := archive.Create("modrinth.index.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(index, `{"formatVersion":1,"game":"minecraft","name":"race","versionId":"1","dependencies":{"minecraft":"1.21.6","fabric-loader":"0.18.1"},"files":[]}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	upload := &reserveDuringUpload{Reader: &body, reserve: func() {
+		var status int
+		var response gin.H
+		release, status, response = reserveServerCreation(user.ID)
+		if status != 0 {
+			t.Fatalf("reserve during upload: %d %v", status, response)
+		}
+	}}
+	r := testUIDRouter(t, "/import", ImportModpack)
+	req := httptest.NewRequest(http.MethodPost, "/import", upload)
+	req.Header.Set("X-Test-UID", fmt.Sprint(user.ID))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 403 || !strings.Contains(w.Body.String(), "PERM_SERVER_LIMIT") {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	if count, err := model.GetServerCount(user.ID); err != nil || count != 0 {
+		t.Fatalf("import persisted an extra server: %d %v", count, err)
 	}
 }
