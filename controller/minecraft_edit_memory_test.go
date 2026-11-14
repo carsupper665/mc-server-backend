@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,7 @@ func testUIDRouter(t *testing.T, path string, h gin.HandlerFunc) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), common.RequestIdKey, "test-request"))
 		uid := uint(1)
 		if raw := c.GetHeader("X-Test-UID"); raw != "" {
 			var parsed uint64
@@ -149,7 +151,7 @@ func TestEditServerMemoryAPIMemoryLimitAndOwnership(t *testing.T) {
 	}
 
 	w = postJSONAs(r, "/memory/s1", other.ID, map[string]any{"xmx": "512M"})
-	if w.Code != http.StatusForbidden {
+	if w.Code != http.StatusNotFound {
 		t.Fatalf("other owner: status=%d body=%s", w.Code, w.Body.String())
 	}
 }

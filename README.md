@@ -41,6 +41,7 @@ Example:
 ```dotenv
 FRONTEND_BASE_URL=http://localhost:5173
 PORT=3000
+# LOGIN_VERIFY_BASE_URL=http://localhost:3000
 DEBUG=false
 UA_FILTER=true
 
@@ -52,6 +53,12 @@ OIDC_GOOGLE_CLIENT_ID=__PLACEHOLDER__
 OIDC_CUSTOM_CLIENT_ID=fgf-mc-panel
 OIDC_CUSTOM_DISCOVERY_URL=http://localhost:15515/.well-known/openid-configuration
 OIDC_REQUIRE_EMAIL_VERIFIED=true
+
+# FGF login (all four required when using this flow)
+# FGF_IDP_ISSUER=https://idp.example.com
+# FGF_IDP_CLIENT_ID=__PLACEHOLDER__
+# FGF_IDP_CLIENT_SECRET=__PLACEHOLDER__
+# FGF_IDP_REDIRECT_URL=https://panel.example.com/login/fgf/callback
 
 SQLITE_PATH=DB.db?_busy_timeout=5000
 SQL_MAX_IDLE_CONNS=100
@@ -70,6 +77,11 @@ DC_WEBHOOK_URL=
 MINECRAFT_SERVER_PATH=./minecraft_servers
 LATEST_FABRIC_LOADER_VERSION=
 LATEST_FABRIC_INSTALLER_VERSION=1.1.0
+
+# Modpack import defaults (leave commented to use defaults)
+# MRPACK_MAX_SIZE_MB=150
+# MRPACK_BLACKLIST=options.txt,optionsof.txt,servers.dat,servers.dat_old,resourcepacks/,shaderpacks/,screenshots/,config/*-client.*,config/iris.properties,config/sodium-options.json
+# MRPACK_DOWNLOAD_HOSTS=cdn.modrinth.com,github.com,raw.githubusercontent.com,gitlab.com,release-assets.githubusercontent.com,objects.githubusercontent.com
 
 AUTO_UPDATE=false
 UPDATE_BETA=false
@@ -95,6 +107,8 @@ CHANCE=1000
 Core:
 - `FRONTEND_BASE_URL`: Base URL for frontend. Used for NoRoute redirect.
 - `PORT`: HTTP listen port. If empty, uses `-port` flag (default `3000`).
+- `LOGIN_VERIFY_BASE_URL`: Base URL used for login email verification links.
+  Defaults to `http://localhost:${PORT}` (`PORT` defaults to `3000`).
 - `DEBUG`: Enables debug mode and verbose logging when `true`.
 - `UA_FILTER`: When `true`, applies User-Agent filtering (in debug mode it can
   be bypassed by setting this to `false`).
@@ -112,6 +126,13 @@ OIDC:
 - `OIDC_CUSTOM_DISCOVERY_URL`: FGF-idp discovery URL
   (e.g. `http://localhost:15515/.well-known/openid-configuration`).
 - `OIDC_REQUIRE_EMAIL_VERIFIED`: Require `email_verified=true` (default `true`).
+
+FGF login (defaults are empty strings; configure all four for this flow):
+- `FGF_IDP_ISSUER`: IdP issuer URL; trailing `/` is removed.
+- `FGF_IDP_CLIENT_ID`: OAuth client ID string.
+- `FGF_IDP_CLIENT_SECRET`: Client secret string, at least 32 characters.
+- `FGF_IDP_REDIRECT_URL`: Callback URL registered with the IdP for the frontend
+  FGF callback page. Issuer and redirect URLs require HTTPS, except on loopback.
 
 Database:
 - `SQLITE_PATH`: SQLite DSN/path (default `DB.db?_busy_timeout=5000`).
@@ -136,6 +157,21 @@ Minecraft server settings:
 - `LATEST_FABRIC_LOADER_VERSION`: Override Fabric loader version (optional).
 - `LATEST_FABRIC_INSTALLER_VERSION`: Override Fabric installer version
   (default `1.1.0` when override is needed).
+
+Modpack import:
+- `MRPACK_MAX_SIZE_MB`: Integer archive size limit in MiB (1 MiB = 1,048,576
+  bytes); default `150`. Unset, empty or invalid integers use the default.
+- `MRPACK_BLACKLIST`: Comma-separated instance-relative paths, directory
+  prefixes ending in `/`, or Go `path.Match` patterns; surrounding whitespace
+  is ignored. When **unset**, the default is
+  `options.txt,optionsof.txt,servers.dat,servers.dat_old,resourcepacks/,shaderpacks/,screenshots/,config/*-client.*,config/iris.properties,config/sodium-options.json`.
+  Setting **an empty string** (`MRPACK_BLACKLIST=`) **disables the blacklist**.
+  Files marked `env.server=unsupported` are always excluded independently.
+- `MRPACK_DOWNLOAD_HOSTS`: Comma-separated exact hostnames (no scheme, port or
+  path), with surrounding whitespace ignored. Default:
+  `cdn.modrinth.com,github.com,raw.githubusercontent.com,gitlab.com,release-assets.githubusercontent.com,objects.githubusercontent.com`.
+  Unset or empty uses the default; a nonempty value replaces the entire list.
+  Downloads require HTTPS.
 
 Auto update:
 - `AUTO_UPDATE`: Enable GitHub release auto-update when `true`.

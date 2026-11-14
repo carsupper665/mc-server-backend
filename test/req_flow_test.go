@@ -3,7 +3,6 @@ package test
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +12,7 @@ import (
 	"go-backend/router"
 )
 
-// Exercise the real HTTP routes, JWT middleware and database in an isolated server.
+// Exercise the real HTTP routes, JWT middleware and database with in-memory HTTP.
 // Only external artifact downloads are mocked; no local running server or email is used.
 func requestFixture(t *testing.T) func(string, string, any) (int, []byte) {
 	t.Helper()
@@ -30,8 +29,6 @@ func requestFixture(t *testing.T) func(string, string, any) (int, []byte) {
 		t.Fatal(err)
 	}
 	t.Cleanup(setupMockModrinth(t, "ver-123", "1.2.3", "mod.jar", "fabric", "1.20.1"))
-	server := httptest.NewServer(r)
-	t.Cleanup(server.Close)
 	token, err := common.GenerateJWTToken(map[string]any{"user_id": "1", "Login_IP": "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
@@ -42,24 +39,18 @@ func requestFixture(t *testing.T) func(string, string, any) (int, []byte) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req, err := http.NewRequest(method, server.URL+path, bytes.NewReader(body))
+		req, err := http.NewRequest(method, "http://localhost"+path, bytes.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/120.0")
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set(common.DeviceHeader, "test-device")
-		resp, err := server.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return resp.StatusCode, data
+		recorder := httptest.NewRecorder()
+		r.ServeHTTP(recorder, req)
+		return recorder.Code, recorder.Body.Bytes()
 	}
 }
 

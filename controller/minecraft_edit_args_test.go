@@ -79,7 +79,7 @@ func TestEditServerArgsOwnershipSameAsDetails(t *testing.T) {
 	r := testUIDRouter(t, "/args/:server_id", EditServerArgs)
 
 	w := postJSONAs(r, "/args/s1", root.ID, map[string]any{"args": "-Xlog:gc"})
-	if w.Code != http.StatusForbidden {
+	if w.Code != http.StatusNotFound {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha512"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -234,5 +236,67 @@ func TestModpackRetainsAllDetailsAndEmbeddedMods(t *testing.T) {
 	var saved ModpackSession
 	if err := json.Unmarshal([]byte(server.InstallDetails), &saved); err != nil || len(saved.Details) != len(s.Details) {
 		t.Fatal("full details were truncated")
+	}
+}
+
+func TestModpackOverrideWithoutMetadataCountsEachJar(t *testing.T) {
+	setupPackInstall(t, func(req *http.Request) (*http.Response, error) {
+		if req.URL.Hostname() == "api.modrinth.com" && !strings.Contains(req.URL.Path, fmt.Sprintf("%x", sha512.Sum512([]byte("mod")))) {
+			return packResponse(req, 404, "not found"), nil
+		}
+		return standardPackTransport(req)
+	})
+	p := testPack()
+	s := startPack(t, p, "overrides/mods/test.jar", "overrides/mods/unknown.jar")
+	waitPack(t, s)
+	if s.Status != JobCompleted {
+		t.Fatalf("install failed: %s", s.Error)
+	}
+	count, err := model.GetModCount(s.ServerID)
+	if err != nil || count != 2 {
+		t.Fatalf("mod count=%d err=%v, want 2", count, err)
+	}
+	mods, err := model.ListMods(s.ServerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, mod := range mods {
+		if mod.Filename == "" || !mod.Enabled || mod.VersionID != "" || !strings.HasPrefix(mod.ModID, "local:") {
+			t.Fatalf("invalid local record: %+v", mod)
+		}
+		if ids[mod.ModID] {
+			t.Fatal("unknown jars share an ID")
+		}
+		ids[mod.ModID] = true
+	}
+	// Background metadata synchronization must not send local identifiers to Modrinth.
+	targets, err := model.ListInstalledModSyncTargets()
+	if err != nil || len(targets) != 0 {
+		t.Fatalf("sync targets=%v err=%v", targets, err)
+	}
+}
+
+func TestModpackOverrideCanceledMetadataStillCountsInstalledJar(t *testing.T) {
+	setupPackInstall(t, func(req *http.Request) (*http.Response, error) {
+		if req.URL.Hostname() == "api.modrinth.com" {
+			modpackSessions.Lock()
+			for _, session := range modpackSessions.items {
+				session.cancel()
+			}
+			modpackSessions.Unlock()
+			return nil, context.Canceled
+		}
+		return standardPackTransport(req)
+	})
+	p := testPack()
+	p.Files = nil
+	s := startPack(t, p, "overrides/mods/unknown.jar")
+	waitPack(t, s)
+	if s.Status != InstallJobStatus("interrupted") {
+		t.Fatalf("status=%s error=%s", s.Status, s.Error)
+	}
+	if count, err := model.GetModCount(s.ServerID); err != nil || count != 1 {
+		t.Fatalf("installed jar lost from quota after cancellation: count=%d err=%v", count, err)
 	}
 }

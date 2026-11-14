@@ -53,7 +53,7 @@ class HttpTester:
             password = input("enter password: ")
             self.login_and_verify(username, password)
 
-        url = f"{BASE_URL}/mc-api/a/recover"
+        url = f"{BASE_URL}/api/v1/server/recover"
         post_data = {"file_name": file_name, "server_id": server_id}
         response = self.session.post(url, json=post_data)
         return self._res_handler(response)
@@ -63,7 +63,7 @@ class HttpTester:
             if self.verbose:
                 print("please login")
             return None, None
-        url = f"{BASE_URL}/user/cs"
+        url = f"{BASE_URL}/api/v1/server/create"
         response = self.session.post(url,
                     json={"server_type": server_type,
                         "server_ver": server_ver, "display_name": display_name})
@@ -75,22 +75,23 @@ class HttpTester:
             json.dump(cookies_dict, f)
 
     def server(self, server_id: str, action: str):
-        v1_api = ["add_mod"]
-        if action not in ["start", "stop", "backup", "ls-backup", "usage", "details"] and action not in v1_api:
-            raise ValueError("action must be 'start' or 'stop'")
+        actions = {
+            "start": ("post", "start"),
+            "stop": ("post", "stop"),
+            "backup": ("post", "backup"),
+            "ls-backup": ("get", "list/backup"),
+            "usage": ("get", "usage"),
+            "details": ("get", "details"),
+        }
+        if action not in actions:
+            raise ValueError(f"action must be one of {', '.join(actions)}")
         if not self.is_sess_exist:
             if self.verbose:
                 print("please login")
             return None, None
-        if action not in v1_api:
-            url = f"{BASE_URL}/api/v1/server/{action}/{server_id}"
-            if action in ["usage", "details"]:
-                response = self.session.get(url)
-            else:
-                response = self.session.post(url,)
-        else:
-            url = f"{BASE_URL}/api/v1/server/{action}/{server_id}"
-            
+        method, path = actions[action]
+        url = f"{BASE_URL}/api/v1/server/{path}/{server_id}"
+        response = getattr(self.session, method)(url)
         return self._res_handler(response)
 
     def add_mod(self, server_id: str, mod_id: str, ver_id: str = "", auto_update: bool = True):
@@ -148,7 +149,7 @@ class HttpTester:
             return None, None
         url = f"{BASE_URL}/api/v1/server/mod/remove/{server_id}"
         params = {"mod_id": mod_id}
-        response = self.session.get(url, params=params)
+        response = self.session.post(url, params=params)
         return self._res_handler(response)
 
     def toggle_mod(self, server_id: str, mod_id: str):
@@ -158,7 +159,7 @@ class HttpTester:
             return
         url = f"{BASE_URL}/api/v1/server/mod/toggle/{server_id}"
         params = {"mod_id": mod_id}
-        response = self.session.get(url, params=params)
+        response = self.session.post(url, params=params)
         return self._res_handler(response)
 
     def list_mods(self, server_id: str):
@@ -177,7 +178,7 @@ class HttpTester:
             return None, None
         url = f"{BASE_URL}/api/v1/server/mod/update/{server_id}"
         params = {"mod_id": mod_id}
-        response = self.session.get(url, params=params)
+        response = self.session.post(url, params=params)
         return self._res_handler(response)
 
     def load_cookies(self, file_path: str = "cookies.json"):

@@ -118,11 +118,15 @@ func (s *ServerService) DeleteMod(sid, modID, modPath string) error {
 }
 
 func (s *ServerService) DisableMod(sid, modID, modPath string) error {
+	mod, err := model.GetServerMod(sid, modID)
+	if err != nil {
+		return err
+	}
 	if err := s.mgr.DisableMod(sid, modPath); err != nil {
 		return err
 	}
 
-	newFilename := filepath.Base(modPath) + ".disable"
+	newFilename := mod.Filename + ".disable"
 	if err := model.UpdateModState(sid, modID, newFilename, "disabled", false); err != nil {
 		_ = s.mgr.EnableMod(sid, modPath+".disable")
 		return err
@@ -132,12 +136,15 @@ func (s *ServerService) DisableMod(sid, modID, modPath string) error {
 }
 
 func (s *ServerService) EnableMod(sid, modID, modPath string) error {
+	mod, err := model.GetServerMod(sid, modID)
+	if err != nil {
+		return err
+	}
 	if err := s.mgr.EnableMod(sid, modPath); err != nil {
 		return err
 	}
 
-	filename := filepath.Base(modPath)
-	filename = strings.TrimSuffix(filename, filepath.Ext(filename))
+	filename := strings.TrimSuffix(mod.Filename, ".disable")
 	if err := model.UpdateModState(sid, modID, filename, "installed", true); err != nil {
 		enabledPath := strings.TrimSuffix(modPath, filepath.Ext(modPath))
 		_ = s.mgr.DisableMod(sid, enabledPath)
