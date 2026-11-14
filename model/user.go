@@ -21,9 +21,9 @@ type User struct {
 	Email              string         `gorm:"size:255;uniqueIndex;not null" json:"email"`
 	Password           string         `gorm:"size:255;not null" json:"-"`
 	Salt               string         `gorm:"size:255;not null" json:"-"`
-	VerificationCode   string         `gorm:"size:6" json:"verification_code"`
+	VerificationCode   string         `gorm:"size:6" json:"-"`
 	VerificationSentAt time.Time      `gorm:"autoCreateTime" json:"verification_sent_at"`
-	AccessToken        *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"`
+	AccessToken        *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 	DeletedAt          gorm.DeletedAt `gorm:"index" json:"-"`

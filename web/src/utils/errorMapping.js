@@ -15,6 +15,7 @@ const permissionErrorMappings = {
     PERM_BACKUP_DENIED: '沒有建立備份的權限',
     PERM_ROLE_UNDEFINED: '角色未定義，無法執行此操作',
     PERM_EDIT_ARGS: '只有 Root 可以修改 JVM 參數',
+    ADMIN_FGF_MANAGED: 'FGF 帳號的角色與顯示名稱由 FGF 同步，無法手動修改',
 };
 
 // 精確匹配對照表

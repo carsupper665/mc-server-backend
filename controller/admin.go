@@ -63,11 +63,29 @@ func EditUser(c *gin.Context) {
 		}
 		role = *req.NewRole
 	}
+	if req.NewPassword != "" && len(req.NewPassword) < 8 {
+		c.JSON(400, gin.H{"message": "Invalid request"})
+		return
+	}
+	if req.NewRole != nil || req.NewDisplayName != "" {
+		var target model.User
+		if err := model.DB.First(&target, req.UserId).Error; err == nil && target.FGFSubject != nil {
+			c.JSON(400, gin.H{"error": "FGF 帳號的角色與顯示名稱由 FGF 同步，無法手動修改", "code": "ADMIN_FGF_MANAGED"})
+			return
+		}
+	}
 	err := model.UpdateUser(req.UserId, req.NewUsername, req.NewDisplayName, req.NewEmail, role)
 	if err != nil {
 		c.JSON(500, gin.H{"message": "Failed to update user", "request_id": c.Request.Context().Value(common.RequestIdKey)})
 		common.Logger.Errorf("Failed to update user: %v", err)
 		return
+	}
+	if req.NewPassword != "" {
+		if err := model.UpdatePassword(req.UserId, req.NewPassword); err != nil {
+			c.JSON(500, gin.H{"message": "Failed to update user", "request_id": c.Request.Context().Value(common.RequestIdKey)})
+			common.Logger.Errorf("Failed to update password: %v", err)
+			return
+		}
 	}
 	common.Logger.Infof("User ID: %d, Update Successful", req.UserId)
 	c.JSON(200, gin.H{"message": "User updated successfully"})
@@ -97,5 +115,13 @@ func GetAllUser(c *gin.Context) {
 		common.Logger.Errorf("Failed to get user: %v", err)
 		return
 	}
-	c.JSON(200, gin.H{"data": user})
+	type userItem struct {
+		model.User
+		IsFGF bool `json:"is_fgf"`
+	}
+	data := make([]userItem, len(user))
+	for i, u := range user {
+		data[i] = userItem{User: u, IsFGF: u.FGFSubject != nil}
+	}
+	c.JSON(200, gin.H{"data": data})
 }
