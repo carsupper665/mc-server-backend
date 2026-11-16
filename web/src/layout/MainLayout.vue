@@ -88,7 +88,9 @@ const userOptions = [
 ];
 
 const handleUserSelect = (key) => {
-  if (key === 'logout') {
+  if (key === 'profile') {
+    router.push({ name: 'Profile' });
+  } else if (key === 'logout') {
     authStore.logout();
   }
 };
@@ -106,6 +108,8 @@ const breadcrumbs = computed(() => {
     crumbs.push({ label: 'Mods', to: '/mods' });
   } else if (name === 'AmongUs') {
     crumbs.push({ label: 'Among Us', to: '/among-us' });
+  } else if (name === 'Profile') {
+    crumbs.push({ label: 'Profile', to: '/profile' });
   } else if (name === 'ServerDetail') {
     crumbs.push({ label: 'Servers', to: '/servers' });
     crumbs.push({ label: route.params.id || 'Detail', to: null });

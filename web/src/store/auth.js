@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '../api';
+import { roleName, UNLIMITED_LABEL } from '../utils/roles';
 import {
     buildUserFromToken,
     clearAuthSession,
@@ -52,7 +53,9 @@ export const useAuthStore = defineStore('auth', {
         isLoggedIn: (state) => !!state.user,
         displayName: (state) => state.user?.display_name?.trim() || state.user?.username || '',
         isAdmin: (state) => state.user?.role === 6, // RoleRootUser
-        serverLimit: (state) => state.user?.permissions?.unlimited ? '不限' : state.user?.permissions?.max_server_count ?? '—',
+        roleName: (state) => roleName(state.user?.role),
+        serverLimit: (state) => state.user?.permissions?.unlimited ? UNLIMITED_LABEL : state.user?.permissions?.max_server_count ?? '—',
+        onlineLimit: (state) => state.user?.permissions?.unlimited ? UNLIMITED_LABEL : state.user?.permissions?.max_online_count ?? '—',
         canCreateServer: (state) => (count) => {
             const perm = state.user?.permissions;
             return !!perm && (perm.unlimited || (perm.can_create_server && count < perm.max_server_count));

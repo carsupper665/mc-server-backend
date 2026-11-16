@@ -190,3 +190,45 @@ it('keeps controls hidden until server details finish loading', async () => {
     expect(wrapper.find('.server-header').exists()).toBe(true);
     expect(wrapper.text()).toContain('START');
 });
+
+it('shows local mods as plain names with a tag and no update button', async () => {
+    await flushPromises();
+    wrapper.unmount();
+    api.get.mockImplementation(async url => {
+        if (url.includes('/status/')) return { status: 'stopped' };
+        if (url.includes('/details/')) return { server: { server_id: 'test' } };
+        if (url.includes('/mod/list/')) {
+            return [
+                { mod_id: 'AANobbMI', name: 'Sodium', enabled: true },
+                { mod_id: 'local:abc123', name: 'custom-mod.jar', enabled: true },
+            ];
+        }
+        return {};
+    });
+    wrapper = shallowMount(ServerDetailView, {
+        props: { id: 'test' },
+        global: { plugins: [pinia], renderStubDefaultSlot: true },
+    });
+    await flushPromises();
+    wrapper.vm.$.setupState.handleTabChange('mods');
+    await flushPromises();
+    const rows = wrapper.findAll('.mod-row');
+    expect(rows).toHaveLength(2);
+    const [remote, local] = rows;
+    expect(remote.find('a.mod-link').attributes('href')).toBe('https://modrinth.com/mod/AANobbMI');
+    expect(remote.text()).not.toContain('本地檔案');
+    expect(remote.text()).toContain('UPDATE');
+    expect(local.find('a').exists()).toBe(false);
+    expect(local.text()).toContain('custom-mod.jar');
+    expect(local.text()).toContain('本地檔案');
+    expect(local.text()).not.toContain('UPDATE');
+    expect(local.findComponent({ name: 'Switch' }).exists()).toBe(true);
+    expect(local.findComponent({ name: 'Popconfirm' }).exists()).toBe(true);
+});
+
+it('shows a Chinese message when a mod has no Modrinth metadata', async () => {
+    await flushPromises();
+    api.post.mockRejectedValue({ response: { status: 400, data: { error: 'Modrinth metadata unavailable; cannot update this mod' } } });
+    await wrapper.vm.$.setupState.handleUpdateMod({ mod_id: 'x' });
+    expect(messages.error).toHaveBeenCalledWith('更新失敗: 這個模組沒有 Modrinth 資料，無法更新');
+});

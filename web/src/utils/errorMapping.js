@@ -26,6 +26,8 @@ const exactErrorMappings = {
     'invalid_callback': '登入回呼無效，請重新登入',
     'fgf_account_unavailable': 'FGF 帳號暫時無法使用，請稍後再試',
     'session_failed': '無法建立登入階段，請重新登入',
+    'server not found': '找不到伺服器或沒有權限',
+    'modrinth metadata unavailable; cannot update this mod': '這個模組沒有 Modrinth 資料，無法更新',
     'record not found': '找不到該項目',
     'not found': '找不到該項目',
     'unauthorized': '登入已過期，請重新登入',

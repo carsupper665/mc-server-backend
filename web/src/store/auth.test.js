@@ -53,3 +53,22 @@ describe('fetchUser', () => {
     });
 
 });
+
+describe('role and online limit getters', () => {
+    beforeEach(() => setActivePinia(createPinia()));
+    it.each([
+        [0, 'Guest'], [1, 'Member'], [2, 'VIP'], [3, 'External Member'], [6, 'Root'],
+    ])('role %s is named %s', (role, name) => {
+        const store = useAuthStore();
+        store.user = { role };
+        expect(store.roleName).toBe(name);
+    });
+    it('shows max_online_count, 不限 for Root, and a dash when permissions are missing', () => {
+        const store = useAuthStore();
+        expect(store.onlineLimit).toBe('—');
+        store.user = { role: 2, permissions: { max_online_count: 2, unlimited: false } };
+        expect(store.onlineLimit).toBe(2);
+        store.user = { role: 6, permissions: { max_online_count: 0, unlimited: true } };
+        expect(store.onlineLimit).toBe('不限');
+    });
+});

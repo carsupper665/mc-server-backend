@@ -47,6 +47,11 @@ const routes = [
                 path: 'among-us',
                 name: 'AmongUs',
                 component: () => import('../views/AmongUsView.vue'),
+            },
+            {
+                path: 'profile',
+                name: 'Profile',
+                component: () => import('../views/ProfileView.vue'),
             }
         ],
         meta: { auth: true }

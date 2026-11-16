@@ -331,6 +331,7 @@ const modsLoading = ref(false);
 const modSearch = ref('');
 const placeholderIcon = 'https://cdn.modrinth.com/placeholder.svg';
 const updatingMods = ref({});
+const isLocalMod = (mod) => String(mod?.mod_id || '').startsWith('local:');
 
 const filteredMods = computed(() => {
   const keyword = modSearch.value.trim().toLowerCase();
@@ -715,7 +716,12 @@ onMounted(() => {
               <div class="mod-main">
                 <div class="mod-info">
                   <div class="mod-title-row">
+                    <template v-if="isLocalMod(mod)">
+                      <n-text strong>{{ mod.name }}</n-text>
+                      <n-tag size="small" class="local-mod-tag">本地檔案</n-tag>
+                    </template>
                     <a
+                      v-else
                       class="mod-link"
                       :href="`https://modrinth.com/mod/${mod.mod_id}`"
                       target="_blank"
@@ -757,6 +763,7 @@ onMounted(() => {
                   </template>
                 </n-popconfirm>
                 <n-button
+                  v-if="!isLocalMod(mod)"
                   type="primary"
                   ghost
                   :loading="updatingMods[mod.mod_id]"

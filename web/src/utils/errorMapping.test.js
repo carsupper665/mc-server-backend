@@ -138,3 +138,14 @@ it.each([
 ])('maps error code %s', (code, message) => {
     expect(extractAndSanitizeError({ response: { data: { code, error: 'technical error' } } })).toBe(message);
 });
+
+it('maps Server not found to the no-permission wording', () => {
+    expect(sanitizeErrorMessage('Server not found')).toBe('找不到伺服器或沒有權限');
+    expect(extractAndSanitizeError({ response: { status: 404, data: { error: 'Server not found' } } })).toBe('找不到伺服器或沒有權限');
+    expect(sanitizeErrorMessage('record not found')).toBe('找不到該項目');
+});
+
+it('maps the missing Modrinth metadata error', () => {
+    expect(extractAndSanitizeError({ response: { status: 400, data: { error: 'Modrinth metadata unavailable; cannot update this mod' } } }))
+        .toBe('這個模組沒有 Modrinth 資料，無法更新');
+});
