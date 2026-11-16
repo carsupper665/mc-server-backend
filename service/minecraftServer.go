@@ -178,16 +178,34 @@ func CreateServer(oid, serverType, serverVer, loader, installer string) (string,
 	return serverID, nil
 }
 
+// prepareServerDirectory 建立伺服器資料夾並產生 Server ID。
+//
+// Server ID 格式固定為：<前綴><MC 版本>-<4 位隨機數字>-OID-<擁有者 uid>
+// 例如 mcsvv-1.21.4-0427-OID-3、mcsfv-1.21.4-9135-OID-12。
+// 前綴：Vanilla 為 "mcsvv-"，Fabric 為 "mcsfv-"。serverVer 一律傳 MC 版本（不是 loader 版本）。
+//
+// !!! 指定格式 別改!!!
 func prepareServerDirectory(serverType, oid, serverVer string) (string, string, error) {
 	prefix := "mcsvv-"
 	if strings.ToLower(serverType) == Fabric {
 		prefix = "mcsfv-"
 	}
-	prefix = prefix + oid + "-" + serverVer + "-"
-	serverID := prefix + common.GetRandomString(20)
-	workDir := filepath.Join(common.MinecraftServerPath, serverID)
-	err := os.MkdirAll(workDir, 0755)
-	return serverID, workDir, err
+	if err := os.MkdirAll(common.MinecraftServerPath, 0755); err != nil {
+		return "", "", err
+	}
+	// 4 位數字可能撞到同一使用者、同版本的既有伺服器，撞到就重抽，避免共用資料夾。
+	for i := 0; i < 20; i++ {
+		serverID := fmt.Sprintf("%s%s-%s-OID-%s", prefix, serverVer, common.GetRandomIntString(4), oid)
+		workDir := filepath.Join(common.MinecraftServerPath, serverID)
+		err := os.Mkdir(workDir, 0755)
+		if err == nil {
+			return serverID, workDir, nil
+		}
+		if !os.IsExist(err) {
+			return "", "", err
+		}
+	}
+	return "", "", errors.New("failed to allocate a unique server ID")
 }
 
 func installServer(ctx context.Context, workDir, serverType, serverVer, loader, installer string) error {

@@ -51,7 +51,8 @@ func StartModpackInstall(owner uint, pack *MRPack, archive *os.File, xms, xmx in
 	if modpackSessions.stopping {
 		return nil, errors.New("backend is shutting down")
 	}
-	serverID, workDir, err := prepareServerDirectory(loader, fmt.Sprintf("%d", owner), version)
+	// 統一格式
+	serverID, workDir, err := prepareServerDirectory(loader, fmt.Sprintf("%d", owner), pack.Dependencies["minecraft"])
 	if err != nil {
 		return nil, err
 	}
