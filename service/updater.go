@@ -31,6 +31,7 @@ var (
 	ErrUpdateDisabled = errors.New("auto update is disabled")
 	ErrAlreadyStarted = errors.New("update checker already started")
 	ErrHashMismatch   = errors.New("downloaded file hash mismatch")
+	ErrNoUpdateAsset  = errors.New("release has no usable " + curr + " asset")
 )
 
 type status struct {
@@ -162,8 +163,12 @@ func performUpdate(logger *common.SysLogger) error {
 
 	// 下載並應用更新
 	logger.Info("New version available: " + r.TagName)
-	dlUrl := r.Assets[0].BrowserDownloadURL
-	hashString := strings.TrimPrefix(r.Assets[0].Digest, "sha256:")
+	dlUrl, hashString, err := pickUpdateAsset(r)
+	if err != nil {
+		logger.Error(err.Error())
+		_ = model.SetStatus("update failed")
+		return err
+	}
 
 	if err := downloadAndApplyUpdate(dlUrl, hashString, logger); err != nil {
 		_ = model.SetStatus("update failed")
@@ -175,6 +180,22 @@ func performUpdate(logger *common.SysLogger) error {
 	_ = model.ClearUpdateError()
 
 	return nil
+}
+
+// pickUpdateAsset 找 release 裡名為 main.exe 且帶 sha256 digest 的檔案。
+// release 沒附執行檔時回傳錯誤，不能 panic 擋住啟動。
+func pickUpdateAsset(r *release) (url, hash string, err error) {
+	for _, a := range r.Assets {
+		if !strings.EqualFold(a.Name, curr) {
+			continue
+		}
+		hash = strings.TrimPrefix(a.Digest, "sha256:")
+		if a.BrowserDownloadURL == "" || hash == "" || hash == a.Digest {
+			return "", "", fmt.Errorf("%w: %s missing url or sha256 digest", ErrNoUpdateAsset, r.TagName)
+		}
+		return a.BrowserDownloadURL, hash, nil
+	}
+	return "", "", fmt.Errorf("%w: %s", ErrNoUpdateAsset, r.TagName)
 }
 
 // CheckForUpdates 初次啟動時的更新檢查
