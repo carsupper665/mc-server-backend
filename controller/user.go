@@ -242,6 +242,15 @@ func (s *EmailChallengeStore) get(id string) *VerifyLoginCache {
 	return &v
 }
 
+// hasActiveChallenge reports whether id already has an unexpired login challenge.
+// (get() always returns a non-nil pointer, so it cannot be used for this check.)
+func (s *EmailChallengeStore) hasActiveChallenge(id string) bool {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	v, ok := s.cache[id]
+	return ok && time.Now().Before(v.CreateAt.Add(v.Exp))
+}
+
 func (s *EmailChallengeStore) DelById(id string) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
@@ -478,6 +487,10 @@ func (s *EmailChallengeStore) VerificationEmail(c *gin.Context, email, id, usern
 	hashEmail, err := common.Password2Hash(email)
 	if err != nil {
 		return err
+	}
+	if s.hasActiveChallenge(id) {
+		// dont sent email if not expired
+		return nil
 	}
 	code := s.CreateLoginChallenge(id, email)
 	port := common.GetEnvOrDefaultString("PORT", "3000")
