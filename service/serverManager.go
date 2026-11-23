@@ -37,8 +37,7 @@ type Server struct {
 	sid       string
 	oid       string
 	workDir   string
-	maxMem    string
-	minMem    string
+	launch    Launch
 	port      string
 	cmd       *exec.Cmd
 	Monitor   *Monitor
@@ -48,21 +47,18 @@ type Server struct {
 	running   bool
 	exp       time.Time
 	sdc       func(string)
-	args      []string
 	mu        sync.RWMutex
 }
 
-func NewServer(sid, oid, workDir, maxMem, minMem string, portStr string, callback func(string), args []string) *Server {
+func NewServer(sid, oid, workDir string, portStr string, callback func(string), launch Launch) *Server {
 	return &Server{
 		sid:       sid,
 		oid:       oid,
 		workDir:   workDir,
-		maxMem:    maxMem,
-		minMem:    minMem,
+		launch:    launch,
 		port:      portStr,
 		running:   false,
 		sdc:       callback,
-		args:      args,
 		logBuffer: &bytes.Buffer{},
 	}
 }
@@ -79,15 +75,14 @@ func (s *Server) Start() error {
 	if s.running {
 		return ErrAlreadyRunning
 	}
-	// 建立命令參數
-	cmdArgs := []string{
-		"-Xms" + s.minMem,
-		"-Xmx" + s.maxMem,
+	// Port 一律寫進 server.properties（Forge／NeoForge 不保證支援 --port）
+	if err := UpdateProperty(s.workDir, "server-port", s.port); err != nil {
+		return fmt.Errorf("set server-port: %w", err)
 	}
-	cmdArgs = append(cmdArgs, s.args...)
-	cmdArgs = append(cmdArgs, "-jar", "server.jar", "--port", s.port)
-	common.Logger.Debugf("Starting server with args: %v", cmdArgs)
-	cmd := exec.CommandContext(context.Background(), "java", cmdArgs...)
+	// 建立命令參數
+	cmdArgs := BuildLaunchArgs(s.launch)
+	common.Logger.Debugf("Starting server with %s args: %v", s.launch.java(), cmdArgs)
+	cmd := exec.CommandContext(context.Background(), s.launch.java(), cmdArgs...)
 	cmd.Dir = s.workDir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -116,6 +111,15 @@ func (s *Server) Start() error {
 	go s.captureLogs()
 	go s.waitAndCleanup()
 	return nil
+}
+
+// setLaunch refreshes memory/JVM/launch settings for a restart of a cached server.
+func (s *Server) setLaunch(launch Launch) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.running {
+		s.launch = launch
+	}
 }
 
 func (s *Server) captureLogs() {
@@ -454,16 +458,18 @@ func (sm *ServerManager) releasePortWithOutLock(portStr string) {
 	sm.availablePorts = append(sm.availablePorts, port)
 }
 
-func (sm *ServerManager) StartServer(sid, oid, workDir, maxMem, minMem string, args []string) (*Server, error) {
+func (sm *ServerManager) StartServer(sid, oid, workDir string, launch Launch) (*Server, error) {
 	sm.mu.Lock()
 	if s, exists := sm.servers[sid]; exists {
+		s.setLaunch(launch)
 		err := s.Start()
 		if err != nil && errors.Is(err, ErrAlreadyRunning) {
 			sm.mu.Unlock()
 			common.SysDebug("server already running sid: " + sid)
 			return nil, ErrAlreadyRunning
 		} else if err != nil {
-			panic("Unknow error:" + err.Error())
+			sm.mu.Unlock()
+			return nil, err
 		}
 		sm.mu.Unlock()
 		common.SysDebug("Server is running: " + sid)
@@ -479,7 +485,7 @@ func (sm *ServerManager) StartServer(sid, oid, workDir, maxMem, minMem string, a
 	allocatedPort = p
 	portStr := fmt.Sprintf("%d", p)
 
-	srv := NewServer(sid, oid, workDir, maxMem, minMem, portStr, sm.shutDownServerCallback, args)
+	srv := NewServer(sid, oid, workDir, portStr, sm.shutDownServerCallback, launch)
 	sm.assignPortToServer(allocatedPort, sid)
 
 	sm.mu.Lock()

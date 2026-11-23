@@ -3,6 +3,7 @@ import api from '../api';
 import { ensureDeviceId, getAccessToken } from '../utils/authStorage';
 
 const jobStreams = new Map();
+const PLACEHOLDER_ICON = 'https://cdn.modrinth.com/placeholder.svg';
 
 export const useModInstallStore = defineStore('modInstall', {
   state: () => ({
@@ -15,6 +16,39 @@ export const useModInstallStore = defineStore('modInstall', {
       if (!job || !['completed', 'failed'].includes(job.status)) return;
       this.closeJobStream(jobId);
       this.jobs = this.jobs.filter(job => job.jobId !== jobId);
+    },
+
+    /**
+     * 把 mod 加入伺服器的安裝佇列（ModsView 與伺服器詳情頁共用）
+     * @returns {Promise<object>} 新增的工作；失敗時丟出 API 錯誤
+     */
+    async enqueueModInstall({ mod, server, versionId }) {
+      const res = await api.post(`/api/v1/server/mod/add/${server.server_id}?async=true`, {
+        mod_id: mod.project_id,
+        version_id: versionId || '',
+        auto_update: true
+      }, { silent: true });
+      if (!res?.job_id) throw new Error('無法取得安裝工作 ID');
+      const job = {
+        jobId: res.job_id,
+        serverId: server.server_id,
+        serverName: server.display_name || server.server_id,
+        modId: mod.project_id,
+        modTitle: mod.title || mod.project_id,
+        modIcon: mod.icon_url || PLACEHOLDER_ICON,
+        stage: res.status || 'queued',
+        status: 'running',
+        percent: 0,
+        message: ''
+      };
+      this.addJob(job);
+      return job;
+    },
+
+    // 追蹤伺服器安裝（建立伺服器、匯入整合包）的進度；同一個工作只加一次
+    trackServerInstall({ jobId, serverId, serverName, status = 'queued' }) {
+      if (!jobId || this.jobs.some(job => job.jobId === jobId)) return;
+      this.addJob({ jobId, serverId, serverName, modTitle: serverName || serverId, status, stage: 'queued', percent: 0 });
     },
 
     addJob(job) {
@@ -39,7 +73,7 @@ export const useModInstallStore = defineStore('modInstall', {
 
     createSseStream(url, onEvent, onError) {
       const controller = new AbortController();
-      const headerValue = api.defaults.headers.common['C-MPMC-WEB-Header'] || '';
+      const headerValue = api.defaults?.headers?.common?.['C-MPMC-WEB-Header'] || '';
       const headers = {
         Accept: 'text/event-stream'
       };

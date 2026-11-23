@@ -20,8 +20,11 @@ import (
 	"gorm.io/gorm"
 )
 
-var createMinecraftServer = service.CreateServer
+var createMinecraftServer = service.StartCreateServer
 
+// CreateServer validates the request, records the server as installing and returns 202.
+// Installation runs in the background; progress uses the modpack install session APIs
+// (/server/mod/job/:ins_ses_id and /server/mod/subscribe/:ins_ses_id).
 func CreateServer(c *gin.Context) {
 	var req service.CreateServerRequest
 
@@ -31,12 +34,13 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	_, uid_str, uid_uint, err := getPayloadAndId(c)
+	_, _, uid_uint, err := getPayloadAndId(c)
 	if err != nil {
 		c.JSON(401, gin.H{"error": "Unauthorized"})
 		return
 	}
 
+	// The reservation covers validation until the installing record is in the database.
 	release, status, body := reserveServerCreation(uid_uint)
 	if status != 0 {
 		c.JSON(status, body)
@@ -51,31 +55,70 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	serverID, err := createMinecraftServer(uid_str, req.ServerType, req.ServerVer, req.FabricLoader, req.FabricInstaller)
+	session, err := createMinecraftServer(c.Request.Context(), uid_uint, req, xms, xmx)
 	if err != nil {
+		if status, body, ok := versionErrorResponse(err); ok {
+			c.JSON(status, body)
+			return
+		}
 		common.LogError(c.Request.Context(), "CreateMinecraftServer error: "+err.Error())
 		c.JSON(500, gin.H{"error": "Failed to create server"})
 		return
 	}
 
-	sysPath := common.MinecraftServerPath + "/" + serverID
-	modelErr := model.AddServerToUser(uid_uint, serverID, req.DisplayName, req.ServerVer,
-		req.ServerType, req.FabricLoader, sysPath, xms, xmx)
-
-	if modelErr != nil {
-		common.LogError(c.Request.Context(), "AddServerToUser error: "+modelErr.Error())
-		service.ErrorFileClear(common.MinecraftServerPath + "/" + serverID)
-		c.JSON(500, gin.H{"error": "Failed to add server to user"})
-		return
-	}
-
-	c.JSON(200, gin.H{"server_id": serverID})
+	c.JSON(http.StatusAccepted, gin.H{"server_id": session.ServerID, "ins_ses_id": session.SessionID})
 }
 
+func versionErrorResponse(err error) (int, gin.H, bool) {
+	switch {
+	case errors.Is(err, service.ErrUnsupportedServerType):
+		return http.StatusBadRequest, gin.H{"error": "unsupported server type", "code": "UNSUPPORTED_SERVER_TYPE"}, true
+	case errors.Is(err, service.ErrUnsupportedVersion):
+		return http.StatusBadRequest, gin.H{"error": "unsupported version", "code": "UNSUPPORTED_VERSION"}, true
+	}
+	return 0, nil, false
+}
+
+// GetAllVanillaVersions is the /vinfo alias of GET /public/versions/vanilla.
 func GetAllVanillaVersions(c *gin.Context) {
-	versions, err := service.GetAllVanillaVersions()
-	if len(versions) == 0 || err != nil {
-		c.JSON(404, gin.H{"error": ""})
+	versions, err := service.ListVanillaVersions(c.Request.Context(), c.Query("type"))
+	if err != nil || len(versions) == 0 {
+		if err != nil {
+			common.LogError(c.Request.Context(), "GetAllVanillaVersions error: "+err.Error())
+		}
+		c.JSON(503, gin.H{"error": "version list unavailable", "code": "VERSION_SOURCE_UNAVAILABLE"})
+		return
+	}
+	c.JSON(200, gin.H{"versions": versions})
+}
+
+// GetVersions: GET /public/versions/:loader (vanilla, fabric, forge, neoforge).
+// Without ?mc it lists supported MC versions ([{id,type,stable}]); vanilla accepts
+// ?type=release|snapshot|all. With ?mc it lists loader versions
+// ([{id,mc_version,stable,latest,recommended}], newest first).
+func GetVersions(c *gin.Context) {
+	loader := strings.ToLower(c.Param("loader"))
+	mc := strings.TrimSpace(c.Query("mc"))
+	var (
+		versions any
+		err      error
+	)
+	if mc == "" || loader == service.Vanilla {
+		versions, err = service.ListGameVersions(c.Request.Context(), loader, c.Query("type"))
+	} else {
+		versions, err = service.ListLoaderBuilds(c.Request.Context(), loader, mc)
+	}
+	if err != nil {
+		if errors.Is(err, service.ErrUnsupportedServerType) {
+			c.JSON(404, gin.H{"error": "unsupported server type", "code": "UNSUPPORTED_SERVER_TYPE"})
+			return
+		}
+		common.LogError(c.Request.Context(), "GetVersions error: "+err.Error())
+		c.JSON(503, gin.H{"error": "version list unavailable", "code": "VERSION_SOURCE_UNAVAILABLE"})
+		return
+	}
+	if mc != "" && loader != service.Vanilla {
+		c.JSON(200, gin.H{"mc_version": mc, "versions": versions})
 		return
 	}
 	c.JSON(200, gin.H{"versions": versions})
@@ -423,6 +466,21 @@ func modpackModLimitResponse(uid uint, modCount int) (status int, body gin.H, bl
 	return 0, nil, false
 }
 
+func isInstalling(status string) bool {
+	return status == string(service.JobQueued) || status == string(service.JobRunning)
+}
+
+// installStateResponse blocks starting a server whose installation is unfinished or failed.
+func installStateResponse(status string) (int, gin.H, bool) {
+	switch {
+	case status == "" || status == string(service.JobCompleted):
+		return 0, nil, false
+	case isInstalling(status):
+		return http.StatusConflict, gin.H{"error": "server installation is not complete", "code": "SERVER_INSTALLING"}, true
+	}
+	return http.StatusConflict, gin.H{"error": "server installation failed", "code": "INSTALL_FAILED"}, true
+}
+
 func startFailureResponse(err error) (status int, body gin.H) {
 	switch {
 	case errors.Is(err, service.ErrAlreadyRunning):
@@ -706,8 +764,8 @@ func (sc *ServerController) Start(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Server start Failed."})
 		return
 	}
-	if serverInfo.InstallStatus != "" && serverInfo.InstallStatus != "completed" {
-		c.JSON(409, gin.H{"error": "modpack installation is not complete"})
+	if status, body, blocked := installStateResponse(serverInfo.InstallStatus); blocked {
+		c.JSON(status, body)
 		return
 	}
 	// 兼容舊DB 沒有設定 XMX XMS
@@ -747,7 +805,15 @@ func (sc *ServerController) Start(c *gin.Context) {
 
 	xmxArg := fmt.Sprintf("%dM", xmxBytes/common.MB)
 	xmsArg := fmt.Sprintf("%dM", xmsBytes/common.MB)
-	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, xmxArg, xmsArg, service.SplitJVMArgs(serverInfo.Args))
+	mode, file := service.NormalizeLaunch(serverInfo.LaunchMode, serverInfo.LaunchFile)
+	srv, err := sc.svc.Start(sid, oid, serverInfo.SystemPath, service.Launch{
+		Java:    service.JavaForMC(c.Request.Context(), serverInfo.MCVersion),
+		Mode:    mode,
+		File:    file,
+		MaxMem:  xmxArg,
+		MinMem:  xmsArg,
+		JVMArgs: service.SplitJVMArgs(serverInfo.Args),
+	})
 	if err != nil {
 		common.LogDebug(c.Request.Context(), "Log, StartServer error: "+err.Error())
 		status, body := startFailureResponse(err)
@@ -992,8 +1058,8 @@ func (sc *ServerController) DeleteServerById(c *gin.Context) {
 		return
 	}
 
-	if serverData.InstallStatus == "queued" || serverData.InstallStatus == "running" {
-		c.JSON(409, gin.H{"error": "modpack installation is in progress"})
+	if isInstalling(serverData.InstallStatus) {
+		c.JSON(409, gin.H{"error": "server installation is in progress", "code": "SERVER_INSTALLING"})
 		return
 	}
 	err = sc.svc.DelServer(serverID, serverData.SystemPath)
@@ -1108,7 +1174,7 @@ func (sc *ServerController) GetModInstallJob(c *gin.Context) {
 		return
 	}
 
-	if strings.HasPrefix(jobID, "mrpack-") {
+	if service.IsServerInstallSession(jobID) {
 		raw, err := service.GetModpackSession(jobID, userId)
 		if err != nil {
 			c.JSON(404, gin.H{"error": "job not found"})

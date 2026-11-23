@@ -34,3 +34,28 @@ it('uses an empty selection for the placeholder and resets it when reopened', as
     wrapper.unmount();
   }
 });
+
+it('preselects the preset server when opened', async () => {
+  getProjectVersions.mockClear();
+  const wrapper = shallowMount(ModInstallModal, {
+    props: {
+      show: false,
+      presetServerId: 'server',
+      mod: { id: 'mod', categories: ['fabric'], versions: ['1.21'] },
+      servers: [{ server_id: 'server', mod_loader: 'Fabric', mc_version: '1.21' }],
+    },
+    global: { renderStubDefaultSlot: true },
+  });
+  try {
+    await wrapper.setProps({ show: true });
+    await flushPromises();
+    expect(wrapper.findAllComponents(NSelect)[0].props('value')).toBe('server');
+    expect(getProjectVersions).toHaveBeenCalledTimes(1);
+    await wrapper.setProps({ show: false });
+    await wrapper.setProps({ show: true });
+    await flushPromises();
+    expect(getProjectVersions).toHaveBeenCalledTimes(2);
+  } finally {
+    wrapper.unmount();
+  }
+});

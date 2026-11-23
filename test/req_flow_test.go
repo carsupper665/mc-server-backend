@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"go-backend/common"
 	"go-backend/model"
@@ -57,14 +58,32 @@ func requestFixture(t *testing.T) func(string, string, any) (int, []byte) {
 func createRequestServer(t *testing.T, request func(string, string, any) (int, []byte)) string {
 	t.Helper()
 	status, body := request(http.MethodPost, "/api/v1/server/create", map[string]string{"server_type": "Fabric", "server_ver": "1.20.1", "fabric_loader": "0.16.0", "fabric_installer": "1.0.1", "display_name": "req-test-server"})
-	if status != 200 {
+	if status != http.StatusAccepted {
 		t.Fatalf("create server HTTP %d: %s", status, body)
 	}
 	var result struct {
-		ServerID string `json:"server_id"`
+		ServerID  string `json:"server_id"`
+		SessionID string `json:"ins_ses_id"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil || result.ServerID == "" {
+	if err := json.Unmarshal(body, &result); err != nil || result.ServerID == "" || result.SessionID == "" {
 		t.Fatalf("missing server ID: %s", body)
+	}
+	// Creation is asynchronous: wait for the install session to finish.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, body := request(http.MethodGet, "/api/v1/server/mod/job/"+result.SessionID, nil)
+		var job struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &job)
+		if status == 200 && job.Status == "completed" {
+			break
+		}
+		if job.Status == "failed" || time.Now().After(deadline) {
+			t.Fatalf("install did not complete: HTTP %d %s", status, body)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	return result.ServerID
 }

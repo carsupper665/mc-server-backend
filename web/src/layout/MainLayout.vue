@@ -14,7 +14,8 @@ import {
   LogoutOutlined,
   MenuOutlined,
   TeamOutlined,
-  AppstoreOutlined
+  AppstoreOutlined,
+  SafetyOutlined
 } from '@vicons/antd';
 
 const router = useRouter();
@@ -35,7 +36,7 @@ const activeKey = computed({
 });
 const showMobileMenu = ref(false);
 
-const menuOptions = [
+const baseMenuOptions = [
   {
     label: 'Dashboard',
     key: 'Dashboard',
@@ -74,6 +75,19 @@ const menuOptions = [
   }
 ];
 
+// 使用者管理只有 Root 看得到
+const adminMenuOption = {
+  label: 'Users',
+  key: 'AdminUsers',
+  icon: () => h(NIcon, null, { default: () => h(SafetyOutlined) }),
+  onClick: () => {
+    router.push({ name: 'AdminUsers' });
+    showMobileMenu.value = false;
+  }
+};
+
+const menuOptions = computed(() => (authStore.isAdmin ? [...baseMenuOptions, adminMenuOption] : baseMenuOptions));
+
 const userOptions = [
   {
     label: 'Profile',
@@ -110,6 +124,8 @@ const breadcrumbs = computed(() => {
     crumbs.push({ label: 'Among Us', to: '/among-us' });
   } else if (name === 'Profile') {
     crumbs.push({ label: 'Profile', to: '/profile' });
+  } else if (name === 'AdminUsers') {
+    crumbs.push({ label: 'Users', to: '/admin/users' });
   } else if (name === 'ServerDetail') {
     crumbs.push({ label: 'Servers', to: '/servers' });
     crumbs.push({ label: route.params.id || 'Detail', to: null });

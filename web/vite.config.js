@@ -34,6 +34,10 @@ export default defineConfig({
         target: Api,
         changeOrigin: true,
       },
+      '/op': {
+        target: Api,
+        changeOrigin: true,
+      },
       '/LOL-AmongUs': {
         target: Api,
         changeOrigin: true,

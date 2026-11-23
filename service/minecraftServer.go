@@ -2,7 +2,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +22,8 @@ const (
 type CreateServerRequest struct {
 	ServerType      string `json:"server_type"`
 	ServerVer       string `json:"server_ver"`
-	FabricLoader    string `json:"fabric_loader"`
+	FabricLoader    string `json:"fabric_loader"`  // 舊欄位，等同 loader_version
+	LoaderVersion   string `json:"loader_version"` // Fabric／Forge／NeoForge 版本；空白時用預設（Forge 推薦版、其他最新穩定版）
 	FabricInstaller string `json:"fabric_installer"`
 	DisplayName     string `json:"display_name"`
 }
@@ -48,8 +48,8 @@ func NewServerService(mgr *ServerManager) *ServerService {
 	return &ServerService{mgr: mgr}
 }
 
-func (s *ServerService) Start(sid, oid, workDir, maxMem, minMem string, args []string) (*Server, error) {
-	return s.mgr.StartServer(sid, oid, workDir, maxMem, minMem, args)
+func (s *ServerService) Start(sid, oid, workDir string, launch Launch) (*Server, error) {
+	return s.mgr.StartServer(sid, oid, workDir, launch)
 }
 
 func (s *ServerService) GetServerUsage(sid string) (Snapshot, error) {
@@ -166,29 +166,26 @@ func (s *ServerService) UpdateMod(sid, modID, workDir, modPath, modLoader, gameV
 	return nil
 }
 
-func CreateServer(oid, serverType, serverVer, loader, installer string) (string, error) {
-	serverID, workDir, err := prepareServerDirectory(serverType, oid, serverVer)
-	if err != nil {
-		return "", err
-	}
-	if err = installServer(context.Background(), workDir, serverType, serverVer, loader, installer); err != nil {
-		_ = ErrorFileClear(workDir)
-		return "", err
-	}
-	return serverID, nil
+// serverIDPrefixes 是各伺服器類型的 Server ID 前綴（使用者指定，只能新增，不要改既有的）。
+var serverIDPrefixes = map[string]string{
+	Vanilla:  "mcsvv-",
+	Fabric:   "mcsfv-",
+	Forge:    "mcsgv-",
+	NeoForge: "mcsnv-",
 }
 
 // prepareServerDirectory 建立伺服器資料夾並產生 Server ID。
 //
 // Server ID 格式固定為：<前綴><MC 版本>-<4 位隨機數字>-OID-<擁有者 uid>
 // 例如 mcsvv-1.21.4-0427-OID-3、mcsfv-1.21.4-9135-OID-12。
-// 前綴：Vanilla 為 "mcsvv-"，Fabric 為 "mcsfv-"。serverVer 一律傳 MC 版本（不是 loader 版本）。
+// 前綴：Vanilla 為 "mcsvv-"，Fabric 為 "mcsfv-"，Forge 為 "mcsgv-"，NeoForge 為 "mcsnv-"。
+// serverVer 一律傳 MC 版本（不是 loader 版本）。
 //
 // !!! 指定格式 別改!!!
 func prepareServerDirectory(serverType, oid, serverVer string) (string, string, error) {
-	prefix := "mcsvv-"
-	if strings.ToLower(serverType) == Fabric {
-		prefix = "mcsfv-"
+	prefix, ok := serverIDPrefixes[strings.ToLower(serverType)]
+	if !ok {
+		prefix = serverIDPrefixes[Vanilla]
 	}
 	if err := os.MkdirAll(common.MinecraftServerPath, 0755); err != nil {
 		return "", "", err
@@ -206,50 +203,6 @@ func prepareServerDirectory(serverType, oid, serverVer string) (string, string, 
 		}
 	}
 	return "", "", errors.New("failed to allocate a unique server ID")
-}
-
-func installServer(ctx context.Context, workDir, serverType, serverVer, loader, installer string) error {
-	if loader == "" {
-		loader = common.LatestFabricLoaderVersion
-	}
-	_, uri, err := serverUri(serverType, serverVer, loader)
-	if err != nil {
-		return err
-	}
-	if strings.EqualFold(serverType, Fabric) && installer != "" {
-		uri = fmt.Sprintf("https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar", serverVer, loader, installer)
-	}
-	if err := common.DownloadFileContext(ctx, http.DefaultClient, filepath.Join(workDir, "server.jar"), uri, nil, -1); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(workDir, "eula.txt"), []byte("eula=true\n"), 0644)
-}
-
-func serverUri(ServerType, serverVer, fabricLoader string) (string, string, error) {
-	var err error
-	var perFix, uri string
-	var ok bool
-	var fabricInstaller = common.LatestFabricInstallerVersion
-	ServerType = strings.ToLower(ServerType)
-	switch ServerType {
-	case Fabric:
-		perFix = "mcsfv-"
-		uri = fmt.Sprintf(
-			"https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
-			serverVer, fabricLoader, fabricInstaller,
-		)
-	case Vanilla:
-		perFix = "mcsvv-"
-		uri, ok = common.VanillaServerUrl[serverVer]
-		if !ok {
-			err = errors.New("vanilla server url is empty")
-			return "", "", err
-		}
-	default:
-		err = errors.New("unsupported server type")
-		return "", "", err
-	}
-	return perFix, uri, nil
 }
 
 func GetAllFabricVersions() ([]string, error) {
@@ -272,9 +225,4 @@ func GetAllFabricVersions() ([]string, error) {
 		versions[i] = v.Version
 	}
 	return versions, nil
-}
-
-func GetAllVanillaVersions() (map[string]string, error) {
-	all := common.VanillaServerUrl
-	return all, nil
 }

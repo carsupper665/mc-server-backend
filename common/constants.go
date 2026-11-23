@@ -2,8 +2,8 @@
 package common
 
 const (
-	Version                 = "v1.1.1"
-	Build                   = "-beta-1.2r32"
+	Version                 = "v1.1.2"
+	Build                   = "-beta-1.3r3"
 	ColorBuild              = ColorBrightYellow + Build + ColorReset
 	SystemName              = "Server Controller"
 	ClientHeader            = "C-MPMC-APP-Header" //device id
@@ -39,7 +39,6 @@ var (
 	LatestFabricLoaderVersion    string
 	LatestFabricInstallerVersion string
 	MinecraftServerPath          string
-	VanillaServerUrl             map[string]string
 )
 
 var SMTPServer string

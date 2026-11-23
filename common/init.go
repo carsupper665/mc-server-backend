@@ -111,7 +111,6 @@ func LoadEnv() {
 	OIDCRequireEmailVerified = GetEnvOrDefaultBool("OIDC_REQUIRE_EMAIL_VERIFIED", true)
 
 	SetUpSMTP()
-	LoadVanillaServerUrls()
 }
 
 func InitEventLoop() {
@@ -129,19 +128,6 @@ func SetUpSMTP() {
 	SMTPAccount = GetEnvOrDefaultString("SMTP_ACCOUNT", "")
 	SMTPFrom = GetEnvOrDefaultString("SMTP_FROM", "")
 	SMTPToken = GetEnvOrDefaultString("SMTP_TOKEN", "")
-}
-
-func LoadVanillaServerUrls() {
-	// 讀取檔案
-	data, err := os.ReadFile("common/minecraft-server-jar-downloads.json")
-	if err != nil {
-		log.Fatalf("無法讀取 JSON 檔案: %v", err)
-	}
-
-	// 解析 JSON 到 map
-	if err := json.Unmarshal(data, &VanillaServerUrl); err != nil {
-		log.Fatalf("JSON 解析失敗: %v", err)
-	}
 }
 
 type InstallerVersion struct {

@@ -34,6 +34,7 @@ const stageLabel = (stage, status) => {
   if (status === 'completed') return '完成';
   switch (stage) {
     case 'creating': return '建立伺服器';
+    case 'installing': return '執行安裝程式';
     case 'overriding': return '套用設定';
     case 'retrying': return '重試下載';
     case 'metadata': return '紀錄模組';

@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { NCard, NButton, NIcon, NText, NSpace, NModal, NInput, useMessage } from 'naive-ui';
 import { SaveOutlined } from '@vicons/antd';
 import api, { getSanitizedErrorMessage } from '../api';
 import { useActivityLogStore } from '../store/activityLog';
 import { useAuthStore } from '../store/auth';
+import { UNLIMITED_LABEL } from '../utils/roles';
 
 const props = defineProps({
   serverId: {
@@ -31,6 +32,19 @@ const auth = useAuthStore();
 const backups = ref([]);
 const loading = ref(false);
 
+const canBackup = computed(() => !!auth.user?.permissions?.can_back_up_server);
+const unlimited = computed(() => !!auth.user?.permissions?.unlimited);
+const maxBackups = computed(() => auth.user?.permissions?.max_back_up_count);
+const backupLimitText = computed(() => (unlimited.value ? UNLIMITED_LABEL : maxBackups.value ?? '—'));
+
+// 滾動備份：達上限時後端會刪掉最舊的備份（名稱是時間戳，排序後最前面最舊）
+const backupsToRotate = computed(() => {
+  const max = Number(maxBackups.value);
+  if (unlimited.value || !Number.isFinite(max) || max <= 0 || backups.value.length < max) return [];
+  const names = backups.value.map(b => b.name).sort();
+  return names.slice(0, names.length - max + 1);
+});
+
 // Backup confirmation modal state (for when server is running)
 const showBackupConfirmModal = ref(false);
 const isBackingUp = ref(false);
@@ -56,15 +70,31 @@ const fetchBackups = async () => {
   }
 };
 
+// 運行中或已達上限時先確認（兩種提醒合併在同一個對話框）
 const handleBackup = async () => {
-  // 如果伺服器正在運行，顯示確認對話框
-  if (props.isServerRunning) {
+  if (props.isServerRunning || backupsToRotate.value.length > 0) {
     showBackupConfirmModal.value = true;
     return;
   }
-  
-  // 伺服器已停止，直接執行備份
+
+  // 伺服器已停止且未達上限，直接執行備份
   await executeBackup();
+};
+
+const confirmBackup = async () => {
+  if (props.isServerRunning) {
+    await executeFullBackupFlow();
+    return;
+  }
+  showBackupConfirmModal.value = false;
+  isBackingUp.value = true;
+  backupProgress.value = '正在建立備份...';
+  try {
+    await executeBackup();
+  } finally {
+    isBackingUp.value = false;
+    backupProgress.value = '';
+  }
 };
 
 // 執行備份（伺服器必須已停止）
@@ -174,7 +204,11 @@ defineExpose({ fetchBackups });
 
 <template>
   <div class="server-backups-container">
-    <n-card title="BACKUPS" class="backup-card">
+    <n-card class="backup-card">
+      <template #header>
+        <span>BACKUPS</span>
+        <n-text v-if="canBackup" depth="3" class="backup-count">{{ backups.length }} / {{ backupLimitText }}</n-text>
+      </template>
       <template #header-extra>
         <n-button 
           v-if="auth.user?.permissions?.can_back_up_server"
@@ -246,16 +280,21 @@ defineExpose({ fetchBackups });
       </template>
     </n-modal>
 
-    <!-- 備份確認 Modal (伺服器運行中) -->
+    <!-- 備份確認 Modal (伺服器運行中／已達備份上限) -->
     <n-modal
       v-model:show="showBackupConfirmModal"
       preset="card"
-      title="⚠️ 伺服器運行中"
+      :title="isServerRunning ? '⚠️ 伺服器運行中' : '⚠️ 已達備份上限'"
       :style="{ width: 'min(450px, 94vw)' }"
       :closable="true"
       :mask-closable="true"
     >
-      <div class="backup-confirm-content">
+      <div v-if="backupsToRotate.length" class="rotate-warning">
+        <n-text type="warning">
+          已達上限，建立新備份會刪除最舊的備份 <strong>{{ backupsToRotate.join('、') }}</strong>
+        </n-text>
+      </div>
+      <div v-if="isServerRunning" class="backup-confirm-content">
         <n-text>
           伺服器目前正在運行中。備份需要先停止伺服器。
         </n-text>
@@ -275,7 +314,7 @@ defineExpose({ fetchBackups });
       <template #footer>
         <n-space justify="end">
           <n-button @click="showBackupConfirmModal = false">取消</n-button>
-          <n-button type="primary" @click="executeFullBackupFlow">
+          <n-button type="primary" class="confirm-backup-btn" @click="confirmBackup">
             確認備份
           </n-button>
         </n-space>
@@ -305,6 +344,16 @@ defineExpose({ fetchBackups });
 
 .backup-item:last-child {
   border-bottom: none;
+}
+
+.backup-count {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+.rotate-warning {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 
 .backup-name {

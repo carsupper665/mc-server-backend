@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"go-backend/common"
 	"go-backend/model"
+	"go-backend/service"
 	"gorm.io/gorm"
 )
 
@@ -123,10 +125,10 @@ func TestCreateServerConcurrentReservation(t *testing.T) {
 	user := createLimitUser(t, common.RoleGuestUser)
 	started, finish := make(chan struct{}, 2), make(chan struct{})
 	previous := createMinecraftServer
-	createMinecraftServer = func(_, _, _, _, _ string) (string, error) {
+	createMinecraftServer = func(_ context.Context, _ uint, _ service.CreateServerRequest, _, _ int64) (*service.ModpackSession, error) {
 		started <- struct{}{}
 		<-finish
-		return "created", nil
+		return fakeSession("created"), nil
 	}
 	t.Cleanup(func() { createMinecraftServer = previous })
 	r := testUIDRouter(t, "/create", CreateServer)
@@ -150,7 +152,7 @@ func TestCreateServerConcurrentReservation(t *testing.T) {
 		t.Error("second request blocked behind download")
 	}
 	close(finish)
-	if w := <-first; w.Code != 200 {
+	if w := <-first; w.Code != 202 {
 		t.Fatalf("first: status=%d body=%s", w.Code, w.Body.String())
 	}
 	// Drain the second request before restoring globals and closing the DB.
@@ -165,18 +167,20 @@ func TestCreateServerFailureReleasesReservation(t *testing.T) {
 	previous := createMinecraftServer
 	defer func() { createMinecraftServer = previous }()
 	attempts := 0
-	createMinecraftServer = func(_, _, _, _, _ string) (string, error) {
+	createMinecraftServer = func(_ context.Context, owner uint, _ service.CreateServerRequest, _, _ int64) (*service.ModpackSession, error) {
 		attempts++
 		if attempts == 1 {
-			return "", errors.New("download failed")
+			return nil, errors.New("download failed")
 		}
-		return "retry", nil
+		// The real service persists the installing server before returning.
+		addOwnedServers(t, owner, 1)
+		return fakeSession("retry"), nil
 	}
 	r := testUIDRouter(t, "/create", CreateServer)
 	if w := postJSONAs(r, "/create", user.ID, map[string]any{}); w.Code != 500 {
 		t.Fatalf("first: %d %s", w.Code, w.Body.String())
 	}
-	if w := postJSONAs(r, "/create", user.ID, map[string]any{}); w.Code != 200 {
+	if w := postJSONAs(r, "/create", user.ID, map[string]any{}); w.Code != 202 || !strings.Contains(w.Body.String(), `"server_id":"retry"`) {
 		t.Fatalf("retry: %d %s", w.Code, w.Body.String())
 	}
 	if _, _, blocked := createServerLimitResponse(user.ID); !blocked {
@@ -207,4 +211,10 @@ func TestServerCreationReservationsArePerUserAndRootBypasses(t *testing.T) {
 	if rootPending != 0 {
 		t.Fatalf("root reserved %d slots", rootPending)
 	}
+}
+
+func fakeSession(serverID string) *service.ModpackSession {
+	s := &service.ModpackSession{SessionID: "create-" + serverID}
+	s.ServerID = serverID
+	return s
 }

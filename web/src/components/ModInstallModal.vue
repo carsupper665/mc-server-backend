@@ -35,6 +35,11 @@ const props = defineProps({
   installing: {
     type: Boolean,
     default: false
+  },
+  // 從伺服器詳情頁開啟時預先選好這台伺服器
+  presetServerId: {
+    type: String,
+    default: null
   }
 });
 
@@ -194,10 +199,13 @@ const handleInstall = () => {
 
 watch(() => props.show, (val) => {
   if (val) {
-    selectedServerId.value = null;
+    const previous = selectedServerId.value;
+    selectedServerId.value = props.presetServerId || null;
     selectedVersionId.value = '';
     versionOptions.value = [];
     compatibility.value = { ok: false, reason: '請先選擇伺服器' };
+    // 同一台預選伺服器再次開啟時 selectedServerId 不會變，要自己重新檢查
+    if (props.presetServerId && previous === props.presetServerId) refreshVersions();
   }
 });
 

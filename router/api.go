@@ -43,6 +43,7 @@ func SetAPIRouter(router *gin.Engine, serverController *controller.ServerControl
 	{
 		apiPublic.GET("/finfo", controller.GetAllFabricVersions)
 		apiPublic.GET("/vinfo", controller.GetAllVanillaVersions)
+		apiPublic.GET("/versions/:loader", controller.GetVersions)
 	}
 	serverApi := v1.Group("/server")
 	//serverApi.Use(middleware.ValidateJWTHeader())

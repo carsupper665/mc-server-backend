@@ -20,3 +20,8 @@ export const formatMemoryGB = (bytes) => {
     if (!Number.isFinite(value)) return '—';
     return `${Number((value / GB).toFixed(2))} GB`;
 };
+
+// 可以由 Root 指派的角色（External Member 只能由 FGF 同步產生）
+export const ASSIGNABLE_ROLES = [0, 1, 2, ROLE_ROOT];
+
+export const roleOptions = () => ASSIGNABLE_ROLES.map(role => ({ label: ROLE_NAMES[role], value: role }));

@@ -50,7 +50,7 @@ func UpdateProperty(workDir, key, value string) error {
 	path := workDir + "/server.properties"
 	_ = backUp(path, path+".bak")
 
-	f, err := read(path)
+	f, err := read(workDir)
 
 	if err != nil {
 		return err
@@ -88,10 +88,8 @@ func UpdateProperty(workDir, key, value string) error {
 	if !found {
 		lines = append(lines, fmt.Sprintf("%s=%s", key, value))
 	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading file: %w", err)
-	}
+	// Windows cannot replace a file that is still open.
+	_ = f.Close()
 
 	tmpPath := path + ".tmp"
 	joined := strings.Join(lines, "\n")

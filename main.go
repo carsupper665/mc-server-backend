@@ -95,6 +95,10 @@ func main() {
 
 	// init HTTP server
 	server := gin.New()
+	// Only trust X-Forwarded-For from TRUSTED_PROXIES; empty means use the TCP peer address.
+	if err := server.SetTrustedProxies(common.EnvList("TRUSTED_PROXIES")); err != nil {
+		logger.Fatal("invalid TRUSTED_PROXIES: %s", err.Error())
+	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		logger.Errorf("panic detected: %v", err)
 		err = common.SendErrorToDc(fmt.Sprintf("Panic detected: %v", err))
@@ -118,7 +122,7 @@ func main() {
 		Path:     "/",
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   os.Getenv("SESSION_COOKIE_SECURE") == "true",
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))

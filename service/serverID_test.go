@@ -18,6 +18,8 @@ func TestServerIDFormatIsFixed(t *testing.T) {
 	cases := []struct{ serverType, want string }{
 		{"Vanilla", `^mcsvv-1\.21\.4-[0-9]{4}-OID-3$`},
 		{"fabric", `^mcsfv-1\.21\.4-[0-9]{4}-OID-3$`},
+		{"Forge", `^mcsgv-1\.21\.4-[0-9]{4}-OID-3$`},
+		{"neoforge", `^mcsnv-1\.21\.4-[0-9]{4}-OID-3$`},
 	}
 	for _, c := range cases {
 		id, dir, err := prepareServerDirectory(c.serverType, "3", "1.21.4")

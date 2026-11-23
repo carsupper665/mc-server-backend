@@ -52,6 +52,12 @@ const routes = [
                 path: 'profile',
                 name: 'Profile',
                 component: () => import('../views/ProfileView.vue'),
+            },
+            {
+                // Root 專屬；非 Root 直接進網址時頁面自己顯示無權限
+                path: 'admin/users',
+                name: 'AdminUsers',
+                component: () => import('../views/AdminUsersView.vue'),
             }
         ],
         meta: { auth: true }

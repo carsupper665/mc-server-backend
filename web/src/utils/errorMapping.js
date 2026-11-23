@@ -17,6 +17,11 @@ const permissionErrorMappings = {
     PERM_ROLE_UNDEFINED: '角色未定義，無法執行此操作',
     PERM_EDIT_ARGS: '只有 Root 可以修改 JVM 參數',
     ADMIN_FGF_MANAGED: 'FGF 帳號的角色與顯示名稱由 FGF 同步，無法手動修改',
+    UNSUPPORTED_VERSION: '不支援這個版本（可能沒有伺服器檔案或版本不存在）',
+    UNSUPPORTED_SERVER_TYPE: '不支援這種伺服器類型',
+    VERSION_SOURCE_UNAVAILABLE: '暫時無法取得版本清單，請稍後再試',
+    SERVER_INSTALLING: '伺服器安裝中，請等安裝完成',
+    INSTALL_FAILED: '伺服器安裝失敗，請刪除後重新建立',
 };
 
 // 精確匹配對照表

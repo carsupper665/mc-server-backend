@@ -31,11 +31,13 @@ type ModpackSession struct {
 	done      chan struct{}
 }
 
-var modpackSessions = struct {
+type modpackSessionStore struct {
 	sync.Mutex
 	items    map[string]*ModpackSession
 	stopping bool
-}{items: map[string]*ModpackSession{}}
+}
+
+var modpackSessions = &modpackSessionStore{items: map[string]*ModpackSession{}}
 
 // The archive file belongs to the session after this succeeds.
 func StartModpackInstall(owner uint, pack *MRPack, archive *os.File, xms, xmx int64) (*ModpackSession, error) {
@@ -43,25 +45,66 @@ func StartModpackInstall(owner uint, pack *MRPack, archive *os.File, xms, xmx in
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err := serverUri(loader, pack.Dependencies["minecraft"], version); err != nil {
+	if modpackSessions.isStopping() {
+		return nil, errors.New("backend is shutting down")
+	}
+	resolveCtx, cancelResolve := context.WithTimeout(context.Background(), versionFetchTimeout)
+	src, err := ResolveServerSource(resolveCtx, loader, pack.Dependencies["minecraft"], version, "")
+	cancelResolve()
+	if err != nil {
 		return nil, err
 	}
+	return startInstallSession(installSessionSpec{
+		owner: owner, prefix: modpackSessionPrefix, displayName: pack.Name,
+		modLoader: loader, src: src, xms: xms, xmx: xmx,
+		run: func(ctx context.Context, s *ModpackSession, workDir string) error {
+			return s.install(ctx, pack, workDir, src)
+		},
+		after: func() {
+			os.Remove(archive.Name())
+			archive.Close()
+		},
+	})
+}
+
+type installSessionSpec struct {
+	owner          uint
+	prefix         string
+	displayName    string
+	modLoader      string
+	src            *ServerSource
+	xms, xmx       int64
+	clearOnFailure bool
+	run            func(ctx context.Context, s *ModpackSession, workDir string) error
+	after          func()
+}
+
+func (m *modpackSessionStore) isStopping() bool {
+	m.Lock()
+	defer m.Unlock()
+	return m.stopping
+}
+
+// startInstallSession persists an installing server and runs spec.run in the background.
+// Modpack imports and server creation share it, including progress, history and SSE.
+func startInstallSession(spec installSessionSpec) (*ModpackSession, error) {
 	modpackSessions.Lock()
 	defer modpackSessions.Unlock()
 	if modpackSessions.stopping {
 		return nil, errors.New("backend is shutting down")
 	}
-	// 統一格式
-	serverID, workDir, err := prepareServerDirectory(loader, fmt.Sprintf("%d", owner), pack.Dependencies["minecraft"])
+	owner, src := spec.owner, spec.src
+	// 統一格式：Server ID 一律用 MC 版本
+	serverID, workDir, err := prepareServerDirectory(src.Type, fmt.Sprintf("%d", owner), src.MCVersion)
 	if err != nil {
 		return nil, err
 	}
-	if err := model.AddServerToUser(owner, serverID, pack.Name, pack.Dependencies["minecraft"], loader, version, workDir, xms, xmx); err != nil {
+	if err := model.AddServerToUser(owner, serverID, spec.displayName, src.MCVersion, spec.modLoader, src.LoaderVersion, workDir, spec.xms, spec.xmx); err != nil {
 		_ = ErrorFileClear(workDir)
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	id := "mrpack-" + uuid.NewString()
+	id := spec.prefix + uuid.NewString()
 	session := &ModpackSession{
 		InstallJobSnapshot: InstallJobSnapshot{ID: id, ServerID: serverID, Status: JobQueued, CreatedAt: time.Now()},
 		SessionID:          id, OwnerID: owner, Details: []InstallEvent{}, cancel: cancel, done: make(chan struct{}),
@@ -81,19 +124,28 @@ func StartModpackInstall(owner uint, pack *MRPack, archive *os.File, xms, xmx in
 	go func() {
 		defer close(session.done)
 		defer cancel()
-		defer os.Remove(archive.Name())
-		defer archive.Close()
+		if spec.after != nil {
+			defer spec.after()
+		}
 		session.mu.Lock()
 		session.StartedAt = time.Now()
 		session.Status = JobRunning
 		session.mu.Unlock()
-		err := session.install(ctx, pack, workDir, loader, version)
-		status, message := "completed", "modpack installed"
+		err := spec.run(ctx, session, workDir)
+		status, message := "completed", "server installed"
+		if spec.prefix == modpackSessionPrefix {
+			message = "modpack installed"
+		}
 		if err != nil {
 			status, message = "failed", err.Error()
 		}
 		if ctx.Err() != nil {
 			status, message, err = "interrupted", "backend shutdown interrupted installation", ctx.Err()
+		}
+		if err != nil && spec.clearOnFailure {
+			if clearErr := clearFailedInstall(workDir); clearErr != nil {
+				versionWarn("clear failed install: " + clearErr.Error())
+			}
 		}
 		session.record(status, "", session.percent(), message, err)
 		if err := session.save(); err != nil {
@@ -169,15 +221,20 @@ func GetModpackSession(id string, owner uint) (json.RawMessage, error) {
 	return json.RawMessage(server.InstallDetails), nil
 }
 
-func (s *ModpackSession) install(ctx context.Context, pack *MRPack, workDir, loader, version string) error {
+func (s *ModpackSession) install(ctx context.Context, pack *MRPack, workDir string, src *ServerSource) error {
 	for _, file := range pack.Files {
 		s.record("queued", file.Path, 0, "file selected", nil)
 	}
 	for _, file := range pack.Overrides {
 		s.record("queued", file.Name, 0, "override selected", nil)
 	}
-	s.record("creating", "", 0, "downloading "+loader+" server", nil)
-	if err := installServer(ctx, workDir, loader, pack.Dependencies["minecraft"], version, ""); err != nil {
+	s.record("creating", "", 0, "downloading "+src.Type+" server", nil)
+	// Server progress stays at 0% here; the file downloads below drive the percentage.
+	result, err := installServer(ctx, workDir, src, func(stage string, _ int, message string) { s.record("creating", "", 0, message, nil) })
+	if err != nil {
+		return err
+	}
+	if err := model.SetServerLaunch(s.OwnerID, s.ServerID, result.Mode, result.File); err != nil {
 		return err
 	}
 	for _, name := range pack.Skipped {

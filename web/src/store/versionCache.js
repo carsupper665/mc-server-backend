@@ -6,11 +6,41 @@ import api from '../api';
  *
  * 在使用者進入 Dashboard 時背景預載版本資訊，
  * 確保開啟「新增伺服器」視窗時版本選單秒開。
+ *
+ * 後端：
+ * - /api/v1/public/vinfo → { versions: [{ id, type, stable }] }（只有 release）
+ * - /api/v1/public/finfo → { versions: ['1.21', ...] }
+ * - /api/v1/public/versions/:loader → { versions: [{ id, ... }] }
+ * - /api/v1/public/versions/:loader?mc=x → { versions: [{ id, stable, latest, recommended }] }
  */
+
+const toOptions = list => list.map(v => ({ label: v, value: v }));
+
+// 接受 { versions: [...] }、{ data: [...] } 或直接陣列；元素可以是字串或 { id }
+export const normalizeVersionList = payload => {
+  let data = payload;
+  if (data && !Array.isArray(data) && data.versions) data = data.versions;
+  if (data && !Array.isArray(data) && data.data) data = data.data;
+  if (Array.isArray(data)) {
+    return data.map(v => (typeof v === 'string' ? v : v?.id)).filter(Boolean);
+  }
+  if (data && typeof data === 'object') {
+    // 舊格式 { "<ver>": "<url>" }
+    return Object.keys(data).filter(k => k.match(/^[\d\w.-]+$/));
+  }
+  return [];
+};
+
+export const LOADER_TYPES = ['Fabric', 'Forge', 'NeoForge'];
+
 export const useVersionCacheStore = defineStore('versionCache', {
   state: () => ({
     vanillaVersions: [],
     fabricVersions: [],
+    forgeVersions: [],
+    neoforgeVersions: [],
+    // `${type}:${mc}` → [{ id, stable, latest, recommended }]
+    loaderBuilds: {},
     lastFetched: null,
     isFetching: false,
     fetchError: null,
@@ -34,6 +64,8 @@ export const useVersionCacheStore = defineStore('versionCache', {
       return {
         vanilla: state.vanillaVersions,
         fabric: state.fabricVersions,
+        forge: state.forgeVersions,
+        neoforge: state.neoforgeVersions,
       };
     },
 
@@ -53,13 +85,11 @@ export const useVersionCacheStore = defineStore('versionCache', {
     async prefetchVersions() {
       // 如果快取仍然有效，跳過
       if (this.isCacheValid) {
-
         return;
       }
 
       // 避免重複請求
       if (this.isFetching) {
-        console.log('[VersionCache] 正在載入中，跳過');
         return;
       }
 
@@ -67,46 +97,21 @@ export const useVersionCacheStore = defineStore('versionCache', {
       this.fetchError = null;
 
       try {
-        // 並行請求 Vanilla 和 Fabric 版本
-        const [vanillaRes, fabricRes] = await Promise.allSettled([
-          api.get('/api/v1/public/vinfo'),
-          api.get('/api/v1/public/finfo'),
-        ]);
-
-        // 處理 Vanilla 版本
-        if (vanillaRes.status === 'fulfilled') {
-          let data = vanillaRes.value;
-          if (data.versions) data = data.versions;
-          if (data.data) data = data.data;
-
-          if (data && typeof data === 'object') {
-            const keys = Object.keys(data).filter(k => k.match(/^[\d\w.-]+$/));
-            this.vanillaVersions = keys.map(v => ({ label: v, value: v }));
-            console.log(`[VersionCache] Vanilla 版本載入完成: ${keys.length} 個`);
+        const sources = [
+          ['vanillaVersions', '/api/v1/public/vinfo'],
+          ['fabricVersions', '/api/v1/public/finfo'],
+          ['forgeVersions', '/api/v1/public/versions/forge'],
+          ['neoforgeVersions', '/api/v1/public/versions/neoforge'],
+        ];
+        const results = await Promise.allSettled(sources.map(([, url]) => api.get(url, { silent: true })));
+        results.forEach((res, i) => {
+          const [key, url] = sources[i];
+          if (res.status === 'fulfilled') {
+            this[key] = toOptions(normalizeVersionList(res.value));
+          } else {
+            console.warn(`[VersionCache] ${url} 載入失敗:`, res.reason);
           }
-        } else {
-          console.warn('[VersionCache] Vanilla 版本載入失敗:', vanillaRes.reason);
-        }
-
-        // 處理 Fabric 版本 (後端回傳的是陣列格式)
-        if (fabricRes.status === 'fulfilled') {
-          let data = fabricRes.value;
-          if (data.versions) data = data.versions;
-          if (data.data) data = data.data;
-
-          // Fabric API 回傳陣列格式 ['1.21', '1.20.6', ...]
-          if (Array.isArray(data)) {
-            this.fabricVersions = data.map(v => ({ label: v, value: v }));
-            console.log(`[VersionCache] Fabric 版本載入完成: ${data.length} 個`);
-          } else if (data && typeof data === 'object') {
-            // 備用：如果是物件格式
-            const keys = Object.keys(data).filter(k => k.match(/^[\d\w.-]+$/));
-            this.fabricVersions = keys.map(v => ({ label: v, value: v }));
-            console.log(`[VersionCache] Fabric 版本載入完成: ${keys.length} 個`);
-          }
-        } else {
-          console.warn('[VersionCache] Fabric 版本載入失敗:', fabricRes.reason);
-        }
+        });
 
         this.lastFetched = Date.now();
       } catch (err) {
@@ -119,13 +124,28 @@ export const useVersionCacheStore = defineStore('versionCache', {
 
     /**
      * 根據伺服器類型取得版本列表
-     * @param {'Vanilla' | 'Fabric'} type
+     * @param {'Vanilla' | 'Fabric' | 'Forge' | 'NeoForge'} type
      */
     getVersionsByType(type) {
-      if (type === 'Fabric') {
-        return this.fabricVersions;
+      switch (type) {
+        case 'Fabric': return this.fabricVersions;
+        case 'Forge': return this.forgeVersions;
+        case 'NeoForge': return this.neoforgeVersions;
+        default: return this.vanillaVersions;
       }
-      return this.vanillaVersions;
+    },
+
+    /**
+     * 取得某個 MC 版本可用的 loader 版本（Fabric／Forge／NeoForge），結果會快取
+     */
+    async fetchLoaderBuilds(type, mc) {
+      if (!LOADER_TYPES.includes(type) || !mc) return [];
+      const key = `${type}:${mc}`;
+      if (this.loaderBuilds[key]) return this.loaderBuilds[key];
+      const res = await api.get(`/api/v1/public/versions/${type.toLowerCase()}`, { params: { mc }, silent: true });
+      const builds = Array.isArray(res?.versions) ? res.versions : [];
+      this.loaderBuilds = { ...this.loaderBuilds, [key]: builds };
+      return builds;
     },
 
     /**
@@ -133,7 +153,28 @@ export const useVersionCacheStore = defineStore('versionCache', {
      */
     async forceRefresh() {
       this.lastFetched = null;
+      this.loaderBuilds = {};
       await this.prefetchVersions();
     },
   },
 });
+
+/**
+ * 預設 loader 版本：Forge 用推薦版，其他用最新穩定版
+ */
+export const defaultLoaderBuild = (type, builds) => {
+  if (!builds?.length) return '';
+  const pick = (type === 'Forge' && builds.find(b => b.recommended))
+    || builds.find(b => b.latest)
+    || builds.find(b => b.stable)
+    || builds[0];
+  return pick.id;
+};
+
+export const loaderBuildLabel = build => {
+  const tags = [];
+  if (build.recommended) tags.push('推薦');
+  if (build.latest) tags.push('最新');
+  if (!build.stable) tags.push('不穩定');
+  return tags.length ? `${build.id}（${tags.join('、')}）` : build.id;
+};

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"go-backend/model"
 	"go-backend/service"
@@ -87,6 +86,11 @@ func ImportModpack(c *gin.Context) {
 	serverCreationMu.Unlock()
 	if err != nil {
 		logger.Errorf("Fail to Start Mod Pack Install Error: %v, req_id: %v", err, reqId)
+		if status, body, ok := versionErrorResponse(err); ok {
+			body["request_id"] = reqId
+			c.JSON(status, body)
+			return
+		}
 		c.JSON(400, gin.H{"error": "Start Install Error", "request_id": reqId})
 		return
 	}
@@ -95,7 +99,7 @@ func ImportModpack(c *gin.Context) {
 }
 
 func ownedInstallJob(id string, owner uint) (*service.InstallJobSnapshot, error) {
-	if strings.HasPrefix(id, "mrpack-") {
+	if service.IsServerInstallSession(id) {
 		raw, err := service.GetModpackSession(id, owner)
 		if err != nil {
 			return nil, err

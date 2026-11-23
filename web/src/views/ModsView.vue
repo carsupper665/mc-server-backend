@@ -16,8 +16,6 @@ const showInstallModal = ref(false);
 const selectedMod = ref(null);
 const installing = ref(false);
 
-const placeholderIcon = 'https://cdn.modrinth.com/placeholder.svg';
-
 const fetchServers = async () => {
   loadingServers.value = true;
   try {
@@ -47,32 +45,7 @@ const handleInstall = async ({ mod, server, versionId }) => {
   if (!mod || !server) return;
   installing.value = true;
   try {
-    const payload = {
-      mod_id: mod.project_id,
-      version_id: versionId || '',
-      auto_update: true
-    };
-    const res = await api.post(`/api/v1/server/mod/add/${server.server_id}?async=true`, payload, { silent: true });
-    const jobId = res.job_id;
-    if (!jobId) {
-      message.error('無法取得安裝工作 ID');
-      return;
-    }
-
-    const job = {
-      jobId,
-      serverId: server.server_id,
-      serverName: server.display_name || server.server_id,
-      modId: mod.project_id,
-      modTitle: mod.title || mod.project_id,
-      modIcon: mod.icon_url || placeholderIcon,
-      stage: res.status || 'queued',
-      status: 'running',
-      percent: 0,
-      message: ''
-    };
-
-    modInstallStore.addJob(job);
+    await modInstallStore.enqueueModInstall({ mod, server, versionId });
     message.success('已加入安裝佇列');
     showInstallModal.value = false;
   } catch (err) {

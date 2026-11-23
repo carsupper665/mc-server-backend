@@ -8,7 +8,11 @@ GitHub-based auto-updater.
 
 - Go 1.24.4 (per `go.mod`)
 - Write access to the SQLite file and Minecraft server data directory
-- Network access for Modrinth/Fabric meta and GitHub releases (optional but
+- Java on the host (`java` on `PATH`, or `JAVA_8`/`JAVA_17`/`JAVA_21`/`JAVA_25`);
+  MC ≤1.16.5 (incl. Forge 1.12.2–1.16.5) needs Java 8, 1.17–1.20.4 Java 17,
+  1.20.5–1.21.x Java 21, 26.x Java 25
+- Network access for Mojang, Fabric meta, Forge/NeoForge maven, Modrinth and
+  GitHub releases (optional but
   required for mod install/update and auto-update)
 
 ## Install and Run
@@ -31,6 +35,70 @@ go build ./...
 go test ./...
 ```
 
+## Deployment
+
+### 1. Install Java
+
+The backend starts every Minecraft server with Java, so the host needs the
+Java versions for the Minecraft versions you plan to offer:
+
+| Minecraft version | Java |
+|---|---|
+| ≤ 1.16.5 (incl. Forge 1.12.2–1.16.5) | 8 |
+| 1.17 – 1.20.4 | 17 |
+| 1.20.5 – 1.21.x | 21 |
+| 26.x | 25 |
+
+Any JDK/JRE works; [Eclipse Temurin](https://adoptium.net/) is a good default.
+
+- Linux (Debian/Ubuntu, after adding the Adoptium apt repo):
+  ```bash
+  sudo apt install temurin-8-jre temurin-17-jre temurin-21-jre
+  ```
+- Windows: run the Temurin MSI installer for each version.
+
+Then point each version at its `java` binary in `.env` (`JAVA_8`, `JAVA_17`,
+`JAVA_21`, `JAVA_25`). Unset entries fall back to `java` on `PATH`. Check
+with `"<path>" -version`.
+
+### 2. Open the Minecraft port range
+
+Each Minecraft server is assigned a port from **30000–30050** (TCP). Open
+this range on the host firewall (and any cloud security group / router port
+forward) so players can connect:
+
+- Linux (ufw): `sudo ufw allow 30000:30050/tcp`
+- Linux (firewalld):
+  ```bash
+  sudo firewall-cmd --permanent --add-port=30000-30050/tcp
+  sudo firewall-cmd --reload
+  ```
+- Windows (PowerShell as Administrator):
+  ```powershell
+  New-NetFirewallRule -DisplayName "Minecraft servers" -Direction Inbound -Protocol TCP -LocalPort 30000-30050 -Action Allow
+  ```
+
+The panel port (`PORT`) only needs to be reachable by the reverse proxy.
+
+### 3. Serve the frontend behind a reverse proxy
+
+The frontend (`web/`, build with `npm run build` → `web/dist`) calls the API
+with relative URLs, and the backend does not serve `web/dist`. Put both behind
+one origin with nginx/Caddy: serve `web/dist` as static files (SPA fallback to
+`index.html`) and proxy these paths to the backend: `/api`, `/Authentication`,
+`/user`, `/logout`, `/op`, `/LOL-AmongUs`.
+
+Then set in `.env`:
+
+```dotenv
+TRUSTED_PROXIES=127.0.0.1        # IP of the reverse proxy
+SESSION_COOKIE_SECURE=true       # when the site is served over HTTPS
+FRONTEND_BASE_URL=https://panel.example.com
+```
+
+`TRUSTED_PROXIES` matters: logins are bound to the client IP, and without it
+every user would appear to come from the proxy's address.
+
 ## .env Configuration
 
 Create a `.env` file in the repo root. Values are strings; use `true`/`false`
@@ -44,6 +112,9 @@ PORT=3000
 # LOGIN_VERIFY_BASE_URL=http://localhost:3000
 DEBUG=false
 UA_FILTER=true
+# TRUSTED_PROXIES=127.0.0.1
+# SESSION_COOKIE_SECURE=false
+# CORS_ALLOW_ORIGINS=
 
 SESSION_SECRET=change-me
 CRYPTO_SECRET=
@@ -77,6 +148,16 @@ DC_WEBHOOK_URL=
 MINECRAFT_SERVER_PATH=./minecraft_servers
 LATEST_FABRIC_LOADER_VERSION=
 LATEST_FABRIC_INSTALLER_VERSION=1.1.0
+
+# Version lists and server installation (leave commented to use defaults)
+# VERSION_CACHE_TTL=6h
+# INSTALLER_TIMEOUT=10m
+# INSTALLER_CONCURRENCY=2
+# Java per Minecraft version (Windows paths such as C:\Program Files\Java\jdk-21\bin\java.exe)
+# JAVA_8=
+# JAVA_17=
+# JAVA_21=
+# JAVA_25=
 
 # Modpack import defaults (leave commented to use defaults)
 # MRPACK_MAX_SIZE_MB=150
@@ -112,6 +193,16 @@ Core:
 - `DEBUG`: Enables debug mode and verbose logging when `true`.
 - `UA_FILTER`: When `true`, applies User-Agent filtering (in debug mode it can
   be bypassed by setting this to `false`).
+- `TRUSTED_PROXIES`: Comma-separated IPs/CIDRs of reverse proxies whose
+  `X-Forwarded-For` is trusted for the client IP. Empty trusts no proxy (the
+  TCP peer address is used), so forged `X-Forwarded-For` headers are ignored.
+- `SESSION_COOKIE_SECURE`: When `true`, the session cookie is only sent over
+  HTTPS. Leave `false` for plain-HTTP local development.
+- `CORS_ALLOW_ORIGINS`: Extra comma-separated origins (e.g.
+  `https://tools.example.com`) allowed to call the API cross-origin with
+  credentials. `FRONTEND_BASE_URL` is always allowed. Not needed when the
+  frontend is served from the same origin.
+  With `DEBUG=true` every origin is allowed (local Vite dev server).
 
 Secrets:
 - `SESSION_SECRET`: Session cookie signing key. Must be a strong random string.
@@ -157,6 +248,18 @@ Minecraft server settings:
 - `LATEST_FABRIC_LOADER_VERSION`: Override Fabric loader version (optional).
 - `LATEST_FABRIC_INSTALLER_VERSION`: Override Fabric installer version
   (default `1.1.0` when override is needed).
+- `VERSION_CACHE_TTL`: How long version lists (Mojang manifest, Fabric loaders,
+  Forge/NeoForge maven metadata) are cached in memory. Go duration (`6h`, `30m`)
+  or seconds; default `6h`. When a refresh fails the last good list is served.
+- `INSTALLER_TIMEOUT`: Time limit for one Forge/NeoForge `--installServer` run.
+  Go duration or seconds; default `10m`.
+- `INSTALLER_CONCURRENCY`: Maximum Forge/NeoForge installers running at once
+  (default `2`).
+- `JAVA_8`, `JAVA_17`, `JAVA_21`, `JAVA_25`: Java executables used to launch
+  servers and run installers. The required Java comes from Mojang's version data
+  (`javaVersion.majorVersion`; e.g. 1.16.5 → 8, 1.17 → 16 → `JAVA_17`,
+  1.20.5–1.21.x → 21, 26.x → 25). Unset (default) uses `java` from `PATH`. When none are set no
+  version data is fetched at start.
 
 Modpack import:
 - `MRPACK_MAX_SIZE_MB`: Integer archive size limit in MiB (1 MiB = 1,048,576

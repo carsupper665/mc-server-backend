@@ -31,7 +31,7 @@ func startRunningServer(t *testing.T, sid, ownerID, workDir string) *service.Ser
 		common.Logger = oldLogger
 	})
 	mgr := service.NewServerManager([]int{25565})
-	if _, err := mgr.StartServer(sid, ownerID, workDir, "512M", "512M", nil); err != nil {
+	if _, err := mgr.StartServer(sid, ownerID, workDir, service.Launch{MaxMem: "512M", MinMem: "512M"}); err != nil {
 		t.Fatal(err)
 	}
 	return service.NewServerService(mgr)

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, unref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import {
   NSpace,
   NButton,
@@ -16,11 +16,15 @@ import {
   useMessage,
   NPopconfirm,
   NIcon,
+  NModal,
+  NAlert,
 } from 'naive-ui';
 import {
   CaretRightOutlined,
   PoweroffOutlined,
   SaveOutlined,
+  DeleteOutlined,
+  PlusOutlined,
 } from '@vicons/antd';
 import api, { getSanitizedErrorMessage } from '../api';
 import { useSmartPolling } from '../composables/useSmartPolling';
@@ -28,8 +32,12 @@ import PropertiesEditor from '../components/PropertiesEditor.vue';
 import MacroPanel from '../components/MacroPanel.vue';
 import ServerBackups from '../components/ServerBackups.vue';
 import ServerConsole from '../components/ServerConsole.vue';
+import ModBrowser from '../components/ModBrowser.vue';
+import ModInstallModal from '../components/ModInstallModal.vue';
 import { useActivityLogStore } from '../store/activityLog';
 import { useAuthStore } from '../store/auth';
+import { useModInstallStore } from '../store/modInstall';
+import { formatMemoryGB, UNLIMITED_LABEL } from '../utils/roles';
 
 // Macro 狀態
 const macroStatus = ref(null);
@@ -48,6 +56,18 @@ const message = useMessage();
 const activityLog = useActivityLogStore();
 const authStore = useAuthStore();
 const isRoot = computed(() => authStore.isAdmin);
+const installs = useModInstallStore();
+const router = useRouter();
+
+// 角色上限（/user/me 的 permissions）；Root 顯示「不限」
+const permissions = computed(() => authStore.user?.permissions || null);
+const unlimited = computed(() => !!permissions.value?.unlimited);
+const limitText = (value, format = v => v) => {
+  if (unlimited.value) return UNLIMITED_LABEL;
+  return value == null ? '—' : format(value);
+};
+const memoryLimitText = computed(() => limitText(permissions.value?.server_max_mem, formatMemoryGB));
+const modLimitText = computed(() => limitText(permissions.value?.max_mods_count));
 
 // 初始化活動紀錄 Store
 activityLog.init();
@@ -66,6 +86,42 @@ const serverUnavailable = ref(false);
 const displayName = computed(() => serverDetails.value?.display_name || '');
 const displayId = computed(() => serverDetails.value?.server_id || '');
 const displayPlatform = computed(() => serverDetails.value?.mod_loader || '');
+const displayMcVersion = computed(() => serverDetails.value?.mc_version || '');
+const isVanilla = computed(() => {
+  const loader = String(serverDetails.value?.mod_loader || '').toLowerCase();
+  if (loader) return loader === 'vanilla';
+  return String(serverDetails.value?.server_id || '').startsWith('mcsvv');
+});
+// Vanilla 或沒有值時不顯示 loader 版本
+const displayLoaderVersion = computed(() => (isVanilla.value ? '' : serverDetails.value?.loader_version || ''));
+
+// 安裝狀態（建立伺服器與匯入整合包共用）
+const installStatus = computed(() => serverDetails.value?.install_status || '');
+const isInstalling = computed(() => ['queued', 'running'].includes(installStatus.value));
+const installFailed = computed(() => ['failed', 'interrupted'].includes(installStatus.value));
+const installJob = computed(() => installs.jobs.find(job => job.jobId && job.jobId === serverDetails.value?.ins_ses_id) || null);
+const installError = ref('');
+
+const syncInstallState = async detail => {
+  const status = detail?.install_status;
+  if (['queued', 'running'].includes(status) && detail.ins_ses_id) {
+    installs.trackServerInstall({ jobId: detail.ins_ses_id, serverId: detail.server_id, serverName: detail.display_name, status: 'running' });
+  }
+  installError.value = '';
+  if (['failed', 'interrupted'].includes(status) && detail.ins_ses_id) {
+    try {
+      const job = await api.get(`/api/v1/server/mod/job/${detail.ins_ses_id}`, { silent: true });
+      installError.value = job?.error || job?.message || '';
+    } catch {
+      installError.value = '';
+    }
+  }
+};
+
+// 安裝結束後重新載入伺服器資訊，完成時就能啟動
+watch(() => installJob.value?.status, status => {
+  if (['completed', 'failed'].includes(status)) fetchServerInfo();
+});
 
 const formatMemBytes = bytes => {
   const n = Number(bytes);
@@ -137,6 +193,7 @@ const fetchServerInfo = async () => {
     serverDetails.value = detail;
     syncMemoryInputs(detail);
     syncJvmArgsInput(detail);
+    syncInstallState(detail);
   } catch (err) {
     if ([403, 404].includes(err.response?.status)) {
       serverUnavailable.value = true;
@@ -165,7 +222,7 @@ const termInstance = computed(() => unref(consoleRef.value?.term));
 // 樂觀更新狀態
 const isOptimisticLoading = ref(false);
 const actionInFlight = ref(false);
-const actionsDisabled = computed(() => serverInfoLoading.value || serverUnavailable.value || actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
+const actionsDisabled = computed(() => serverInfoLoading.value || serverUnavailable.value || isInstalling.value || installFailed.value || actionInFlight.value || isOptimisticLoading.value || !['running', 'stopped'].includes(server.value.status));
 const optimisticAction = ref(null); // 'starting' | 'stopping' | null
 let optimisticTimer = null;
 const clearOptimistic = () => {
@@ -378,6 +435,73 @@ const fetchMods = async () => {
   }
 };
 
+// 從詳情頁直接安裝 mod：重用 ModBrowser、ModInstallModal 與安裝佇列
+const showModBrowser = ref(false);
+const showInstallModal = ref(false);
+const selectedMod = ref(null);
+const modInstalling = ref(false);
+const installTargets = computed(() => (serverDetails.value ? [serverDetails.value] : []));
+
+const openModInstall = mod => {
+  selectedMod.value = mod;
+  showInstallModal.value = true;
+};
+
+const handleModInstall = async ({ mod, server: target, versionId }) => {
+  if (!mod || !target) return;
+  modInstalling.value = true;
+  try {
+    await installs.enqueueModInstall({ mod, server: target, versionId });
+    message.success('已加入安裝佇列');
+    showInstallModal.value = false;
+    showModBrowser.value = false;
+  } catch (err) {
+    message.error('安裝失敗: ' + getSanitizedErrorMessage(err));
+  } finally {
+    modInstalling.value = false;
+  }
+};
+
+// 這台伺服器的 mod 安裝完成後重新載入模組列表
+watch(
+  () => installs.jobs.filter(job => job.serverId === props.id && job.modId && job.status === 'completed').length,
+  (count, previous) => {
+    if (count > previous) fetchMods();
+  },
+);
+
+// 刪除伺服器：比照還原備份，要輸入伺服器名稱
+const showDeleteModal = ref(false);
+const deleteConfirmText = ref('');
+const deleting = ref(false);
+const deleteDisabledReason = computed(() => {
+  if (isRunning.value) return '請先停止伺服器再刪除';
+  if (isInstalling.value) return '安裝中無法刪除';
+  return '';
+});
+const deleteConfirmTarget = computed(() => displayName.value || displayId.value);
+
+const openDeleteModal = () => {
+  if (deleteDisabledReason.value) return;
+  deleteConfirmText.value = '';
+  showDeleteModal.value = true;
+};
+
+const confirmDeleteServer = async () => {
+  if (deleting.value || deleteDisabledReason.value || deleteConfirmText.value !== deleteConfirmTarget.value) return;
+  deleting.value = true;
+  try {
+    await api.delete(`/api/v1/server/del/${props.id}`, { silent: true });
+    message.success('伺服器已刪除');
+    showDeleteModal.value = false;
+    router?.push({ name: 'Servers' });
+  } catch (err) {
+    message.error('刪除失敗: ' + getSanitizedErrorMessage(err));
+  } finally {
+    deleting.value = false;
+  }
+};
+
 const handleToggleMod = async (mod, nextValue) => {
   const prevValue = mod.enabled;
   mod.enabled = nextValue;
@@ -547,9 +671,33 @@ onMounted(() => {
                 </n-button>
               </template>
             </n-popconfirm>
+            <n-button
+              class="delete-server-btn"
+              type="error"
+              :disabled="!!deleteDisabledReason"
+              :title="deleteDisabledReason || '刪除伺服器'"
+              @click="openDeleteModal"
+            >
+              <template #icon
+                ><n-icon><DeleteOutlined /></n-icon
+              ></template>
+              刪除伺服器
+            </n-button>
           </n-space>
         </n-space>
       </div>
+
+      <n-text v-if="deleteDisabledReason" depth="3" class="delete-hint">{{ deleteDisabledReason }}</n-text>
+
+      <n-alert v-if="isInstalling" type="info" title="安裝中" class="install-alert">
+        伺服器正在安裝，完成後才能啟動。
+        <span v-if="installJob">進度 {{ installJob.percent ?? 0 }}%<template v-if="installJob.message"> · {{ installJob.message }}</template></span>
+      </n-alert>
+      <n-alert v-else-if="installFailed" type="error" title="安裝失敗" class="install-alert">
+        <div v-if="installError" class="install-error">{{ installError }}</div>
+        <div>伺服器無法啟動，請刪除後重新建立。</div>
+        <n-button size="small" type="error" class="install-delete-btn" @click="openDeleteModal">刪除伺服器</n-button>
+      </n-alert>
 
       <n-grid cols="1 m:4" responsive="screen" :x-gap="20" :y-gap="20">
         <n-grid-item span="1 m:3">
@@ -576,12 +724,21 @@ onMounted(() => {
                   <n-text depth="3">PLATFORM</n-text>
                   <n-text strong>{{ displayPlatform }}</n-text>
                 </div>
+                <div v-if="displayMcVersion" class="info-item">
+                  <n-text depth="3">MC VERSION</n-text>
+                  <n-text strong>{{ displayMcVersion }}</n-text>
+                </div>
+                <div v-if="displayLoaderVersion" class="info-item">
+                  <n-text depth="3">LOADER VERSION</n-text>
+                  <n-text strong>{{ displayLoaderVersion }}</n-text>
+                </div>
               </n-space>
             </n-card>
 
             <n-card title="MEMORY" class="info-card fade-in-up" style="animation-delay: 0.2s">
               <n-space vertical>
                 <n-text depth="3">下次啟動生效</n-text>
+                <n-text depth="3" class="memory-limit">單台上限 {{ memoryLimitText }}</n-text>
                 <div class="info-item">
                   <n-text depth="3">Xmx</n-text>
                   <n-input v-model:value="memoryXmx" size="small" placeholder="例如 2G" class="memory-input" />
@@ -599,6 +756,7 @@ onMounted(() => {
             <n-card v-if="isRoot" title="JVM ARGS" class="info-card fade-in-up" style="animation-delay: 0.25s">
               <n-space vertical>
                 <n-text depth="3">下次啟動生效</n-text>
+                <n-text type="warning" class="jvm-note">只有 Root 可以修改；參數錯誤可能導致伺服器無法啟動</n-text>
                 <n-input
                   v-model:value="jvmArgs"
                   type="textarea"
@@ -680,10 +838,25 @@ onMounted(() => {
           <div class="mods-header">
             <div class="mods-title">
               <n-text strong>SERVER MODS</n-text>
+              <n-text depth="3" class="mods-limit">已安裝 {{ mods.length }} / {{ modLimitText }}</n-text>
               <n-text depth="3" class="mods-count">
                 {{ filteredMods.length }} / {{ mods.length }}
               </n-text>
             </div>
+            <n-button
+              v-if="!isVanilla"
+              class="add-mod-btn"
+              size="small"
+              type="primary"
+              ghost
+              :disabled="isInstalling || installFailed"
+              @click="showModBrowser = true"
+            >
+              <template #icon
+                ><n-icon><PlusOutlined /></n-icon
+              ></template>
+              新增模組
+            </n-button>
             <n-input
               v-model:value="modSearch"
               size="small"
@@ -811,12 +984,75 @@ onMounted(() => {
         </template>
       </n-card>
 
+      <!-- 新增模組：Modrinth 搜尋 -->
+      <n-modal
+        v-model:show="showModBrowser"
+        preset="card"
+        title="新增模組"
+        :style="{ width: 'min(1200px, 96vw)' }"
+        content-style="max-height: 75dvh; overflow-y: auto;"
+      >
+        <ModBrowser v-if="showModBrowser" @add-mod="openModInstall" />
+      </n-modal>
+      <ModInstallModal
+        v-model:show="showInstallModal"
+        :mod="selectedMod"
+        :servers="installTargets"
+        :preset-server-id="props.id"
+        :installing="modInstalling"
+        @install="handleModInstall"
+      />
+
+      <!-- 刪除伺服器確認 -->
+      <n-modal
+        v-model:show="showDeleteModal"
+        preset="card"
+        title="刪除伺服器 - 危險操作"
+        :style="{ width: 'min(450px, 94vw)' }"
+        :closable="!deleting"
+        :mask-closable="!deleting"
+      >
+        <n-text type="warning">伺服器的所有檔案、備份與模組紀錄都會被刪除，且無法復原。</n-text>
+        <n-text depth="3" style="display: block; margin-top: 8px">
+          請輸入伺服器名稱 <strong>{{ deleteConfirmTarget }}</strong> 以確認
+        </n-text>
+        <n-input
+          v-model:value="deleteConfirmText"
+          class="delete-confirm-input"
+          :placeholder="deleteConfirmTarget"
+          :disabled="deleting"
+          @keyup.enter="confirmDeleteServer"
+        />
+        <template #footer>
+          <n-space justify="end">
+            <n-button :disabled="deleting" @click="showDeleteModal = false">取消</n-button>
+            <n-button
+              class="confirm-delete-btn"
+              type="error"
+              :loading="deleting"
+              :disabled="deleteConfirmText !== deleteConfirmTarget || !!deleteDisabledReason"
+              @click="confirmDeleteServer"
+            >
+              確認刪除
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
       
     </n-space>
   </div>
 </template>
 
 <style scoped>
+.delete-hint { font-size: 12px; }
+.install-alert { margin: 0; }
+.install-error { font-family: 'Fira Code', monospace; font-size: 12px; overflow-wrap: anywhere; margin-bottom: 4px; }
+.install-delete-btn { margin-top: 8px; }
+.memory-limit, .jvm-note { font-size: 12px; }
+.mods-limit { font-size: 12px; }
+.delete-confirm-input { margin-top: 12px; }
+
 .title {
   margin: 0;
   font-size: 24px;

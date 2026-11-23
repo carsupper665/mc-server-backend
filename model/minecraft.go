@@ -21,6 +21,11 @@ type UserMinecraftServer struct {
 	ModLoader     string `gorm:"size:20" json:"mod_loader"`     // "Vanilla"/"fabric"
 	LoaderVersion string `gorm:"size:50" json:"loader_version"` // "47.2.0"
 
+	// 啟動方式："jar" → -jar <LaunchFile>；"args" → @<LaunchFile>（Forge 1.17+／NeoForge）。
+	// 舊資料由預設值補成 jar + server.jar，不需要遷移。
+	LaunchMode string `gorm:"size:10;not null;default:'jar'" json:"launch_mode"`
+	LaunchFile string `gorm:"size:255;not null;default:'server.jar'" json:"-"`
+
 	InstallSessionID string `gorm:"index;size:50" json:"ins_ses_id,omitempty"`
 	InstallStatus    string `gorm:"size:20" json:"install_status,omitempty"`
 	InstallDetails   string `gorm:"type:text" json:"-"`
@@ -120,6 +125,20 @@ func EditServerArgs(id uint, serverId string, args string) error {
 	result := DB.Model(&UserMinecraftServer{}).
 		Where("owner_id = ? AND server_id = ?", id, serverId).
 		Update("args", args)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// SetServerLaunch records how an installed server must be started.
+func SetServerLaunch(ownerID uint, serverID, mode, file string) error {
+	result := DB.Model(&UserMinecraftServer{}).
+		Where("owner_id = ? AND server_id = ?", ownerID, serverID).
+		Updates(map[string]interface{}{"launch_mode": mode, "launch_file": file})
 	if result.Error != nil {
 		return result.Error
 	}

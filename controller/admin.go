@@ -26,7 +26,7 @@ type EditUserReq struct {
 
 type ResetAccReq struct {
 	UserId      uint   `json:"user_id" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
 func NewUser(c *gin.Context) {
